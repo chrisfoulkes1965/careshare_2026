@@ -1,17 +1,54 @@
-# careshare
+# CareShare 2026
 
-A new Flutter project.
+Flutter + Firebase app for care coordination.
 
-## Getting Started
+## Prerequisites
 
-This project is a starting point for a Flutter application.
+- Flutter SDK 3.41+
+- Firebase CLI (`firebase-tools`)
+- FlutterFire CLI (`flutterfire_cli`)
+- A Firebase project (`careshare-2026`)
 
-A few resources to get you started if this is your first Flutter project:
+## Local Setup
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+1. Install dependencies:
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```bash
+flutter pub get
+```
+
+2. Generate Firebase config:
+
+```bash
+flutterfire configure --project=careshare-2026 --platforms=android,ios,web,windows,macos,linux --android-package-name=com.careshare.app --ios-bundle-id=com.careshare.app --macos-bundle-id=com.careshare.app
+```
+
+3. Deploy security rules:
+
+```bash
+firebase deploy --only firestore:rules,storage
+```
+
+## Run
+
+Run on web:
+
+```bash
+flutter run -d chrome
+```
+
+Run on Windows desktop:
+
+```bash
+flutter run -d windows
+```
+
+## Firebase Files
+
+- Firestore rules: `firebase/firestore.rules`
+- Storage rules: `firebase/storage.rules`
+- Firebase config: `lib/firebase_options.dart`
+
+## Repository
+
+GitHub: [chrisfoulkes1965/careshare_2026](https://github.com/chrisfoulkes1965/careshare_2026)
