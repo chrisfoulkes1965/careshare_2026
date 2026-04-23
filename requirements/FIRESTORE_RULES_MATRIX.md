@@ -87,7 +87,7 @@ Assume helper `isHouseholdMember(householdId, uid)` → member doc exists on `ho
 |------------|-----------------|-------|---------------------|-------------------|-------------------------|
 | **read** | Yes | Yes | Yes | Yes | Yes, if limited recipient is tied to this household (TBD: prove linkage via `recipientIds` containing a profile id vs `uid`). |
 | **create** | Yes (wizard) | Deny (unless you allow co-creation) | Deny | Deny | Deny |
-| **update** (`name`, `description`, `pathwayIds`, `recipientIds`) | Yes | Deny or **read-only** (brief: “Edit Household” — assign to principal only unless clarified) | Deny | Deny | Deny |
+| **update** (`name`, `description`, `pathwayIds`, `recipientIds`, `address`, `addressType`, `recipientProfiles`) | Yes | Deny or **read-only** (brief: “Edit Household” — assign to principal only unless clarified) | Deny | Deny | Deny |
 | **update** (`careGroupId`) | Deny from client (server-only link) | Deny | Deny | Deny | Deny |
 
 **Recommendation:** treat household **settings** updates as **`principal_carer`** only; carers consume read-only household summary.

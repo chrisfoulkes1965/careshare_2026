@@ -5,6 +5,7 @@ import "package:flutter_bloc/flutter_bloc.dart";
 
 import "../auth/bloc/auth_bloc.dart";
 import "../auth/bloc/auth_state.dart";
+import "../care_group/models/care_group_option.dart";
 import "../user/models/user_profile.dart";
 import "../user/repository/user_repository.dart";
 import "profile_state.dart";
@@ -28,6 +29,29 @@ final class ProfileCubit extends Cubit<ProfileState> {
     final user = _authBloc.state.user;
     if (user != null) {
       await _load(user);
+    }
+  }
+
+  /// Picks a care group after login or from settings; updates Firestore and reloads profile.
+  Future<void> selectActiveCareGroup(CareGroupOption option) async {
+    final user = _authBloc.state.user;
+    if (user == null) return;
+    final previous = state;
+    emit(const ProfileLoading());
+    try {
+      await _userRepository.setActiveCareGroup(
+        uid: user.uid,
+        householdId: option.householdId,
+        careGroupId: option.careGroupId,
+      );
+      await _load(user);
+    } catch (e) {
+      if (previous is ProfileReady) {
+        emit(previous);
+      } else {
+        emit(ProfileError(e.toString()));
+      }
+      rethrow;
     }
   }
 
@@ -64,26 +88,72 @@ final class ProfileCubit extends Cubit<ProfileState> {
     }
 
     try {
-      await _userRepository.ensureUserDocument(user);
-      final fetched = await _userRepository.fetchProfile(user.uid);
+      await _userRepository
+          .ensureUserDocument(user)
+          .timeout(const Duration(seconds: 12));
+      final fetched = await _userRepository
+          .fetchProfile(user.uid)
+          .timeout(const Duration(seconds: 12));
       if (fetched != null) {
-        emit(ProfileReady(fetched));
+        await _emitWithCareGroupOptions(user, fetched);
         return;
       }
 
-      emit(
-        ProfileReady(
-          UserProfile(
-            uid: user.uid,
-            email: user.email ?? "",
-            displayName: user.displayName ?? _emailLocal(user.email),
-            photoUrl: user.photoURL,
-          ),
-        ),
+      final fallback = UserProfile(
+        uid: user.uid,
+        email: user.email ?? "",
+        displayName: user.displayName ?? _emailLocal(user.email),
+        photoUrl: user.photoURL,
       );
+      await _emitWithCareGroupOptions(user, fallback);
+    } on TimeoutException {
+      emit(const ProfileError("Profile load timed out. Please retry."));
     } catch (e) {
       emit(ProfileError(e.toString()));
     }
+  }
+
+  Future<void> _emitWithCareGroupOptions(User user, UserProfile profile) async {
+    var p = profile;
+    List<CareGroupOption> options = const [];
+    try {
+      options = await _userRepository
+          .listCareGroupsForUser(user.uid)
+          .timeout(const Duration(seconds: 20));
+    } on TimeoutException {
+      options = const [];
+    } catch (_) {
+      options = const [];
+    }
+
+    if (options.length == 1) {
+      final only = options.first;
+      if (p.activeHouseholdId != only.householdId || p.activeCareGroupId != only.careGroupId) {
+        await _userRepository.setActiveCareGroup(
+          uid: user.uid,
+          householdId: only.householdId,
+          careGroupId: only.careGroupId,
+        );
+        final again = await _userRepository.fetchProfile(user.uid);
+        if (again != null) {
+          p = again;
+        }
+      }
+    }
+
+    final active = p.activeHouseholdId;
+    final requires = options.length > 1 &&
+        (active == null ||
+            active.isEmpty ||
+            !options.any((o) => o.householdId == active));
+
+    emit(
+      ProfileReady(
+        p,
+        careGroupOptions: options,
+        requiresCareGroupSelection: requires,
+      ),
+    );
   }
 
   String _emailLocal(String? email) {

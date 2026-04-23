@@ -1,7 +1,40 @@
 rules_version = '2';
 
+// Task attachments: path households/{householdId}/task_attachments/{taskId}/{fileName}
+// Access aligned with care group membership (same idea as firestore householder checks).
+
 service firebase.storage {
   match /b/{bucket}/o {
+    function householdData(hid) {
+      return firestore.get(/databases/(default)/documents/households/$(hid));
+    }
+    function isMemberOfHouseholdFromStorage(householdId) {
+      return request.auth != null
+        && firestore.exists(/databases/(default)/documents/households/$(householdId))
+        && (
+          (householdData(householdId).data.careGroupId is string
+            && firestore.exists(
+              /databases/(default)/documents/careGroups/$(householdData(householdId).data.careGroupId)/members/$(request.auth.uid)
+            )
+          )
+        );
+    }
+
+    match /households/{householdId}/task_attachments/{taskId}/{fileName} {
+      allow read: if isMemberOfHouseholdFromStorage(householdId);
+      allow create, update: if isMemberOfHouseholdFromStorage(householdId)
+        && request.resource.size < 10 * 1024 * 1024;
+      allow delete: if isMemberOfHouseholdFromStorage(householdId);
+    }
+
+    match /households/{householdId}/medication_photos/{medicationId}/{fileName} {
+      allow read: if isMemberOfHouseholdFromStorage(householdId);
+      allow create, update: if isMemberOfHouseholdFromStorage(householdId)
+        && request.resource.size < 8 * 1024 * 1024;
+      allow delete: if isMemberOfHouseholdFromStorage(householdId);
+    }
+
+    // Default deny
     match /{allPaths=**} {
       allow read, write: if false;
     }

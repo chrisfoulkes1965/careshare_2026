@@ -2,6 +2,7 @@ import "package:firebase_core/firebase_core.dart";
 import "package:flutter/material.dart";
 
 import "app.dart";
+import "core/medication_reminders/medication_notification_service.dart";
 import "firebase_options.dart";
 
 Future<void> main() async {
@@ -15,6 +16,9 @@ Future<void> main() async {
     firebaseReady = true;
   } catch (e, st) {
     debugPrint("Firebase init failed: $e\n$st");
+  }
+  if (firebaseReady) {
+    await MedicationNotificationService.instance.init();
   }
 
   runApp(CareShareRoot(firebaseReady: firebaseReady));

@@ -1,0 +1,91 @@
+import "dart:async";
+
+import "package:flutter_bloc/flutter_bloc.dart";
+
+import "../models/household_meeting.dart";
+import "../repository/meetings_repository.dart";
+import "meetings_state.dart";
+
+final class MeetingsCubit extends Cubit<MeetingsState> {
+  MeetingsCubit({
+    required MeetingsRepository repository,
+    required this.householdId,
+  })  : _repository = repository,
+        super(const MeetingsInitial());
+
+  final MeetingsRepository _repository;
+  final String householdId;
+
+  StreamSubscription<List<HouseholdMeeting>>? _sub;
+
+  void subscribe() {
+    if (!_repository.isAvailable) {
+      emit(const MeetingsFailure("Firebase is not available."));
+      return;
+    }
+    emit(const MeetingsLoading());
+    unawaited(_sub?.cancel());
+    _sub = _repository.watchMeetings(householdId).listen(
+      (list) {
+        if (list.isEmpty) {
+          emit(const MeetingsEmpty());
+        } else {
+          emit(MeetingsDisplay(list: list));
+        }
+      },
+      onError: (Object e) {
+        final s = e.toString();
+        if (s.contains("permission-denied") || s.contains("PERMISSION_DENIED")) {
+          emit(const MeetingsForbidden());
+        } else {
+          emit(MeetingsFailure(s));
+        }
+      },
+    );
+  }
+
+  Future<void> addMeeting({
+    required String title,
+    String body = "",
+    String location = "",
+    required DateTime meetingAt,
+  }) {
+    return _repository.addMeeting(
+      householdId: householdId,
+      title: title,
+      body: body,
+      location: location,
+      meetingAt: meetingAt,
+    );
+  }
+
+  Future<void> updateMeeting({
+    required String meetingId,
+    required String title,
+    String body = "",
+    String location = "",
+    required DateTime meetingAt,
+  }) {
+    return _repository.updateMeeting(
+      householdId: householdId,
+      meetingId: meetingId,
+      title: title,
+      body: body,
+      location: location,
+      meetingAt: meetingAt,
+    );
+  }
+
+  Future<void> deleteMeeting(String meetingId) {
+    return _repository.deleteMeeting(
+      householdId: householdId,
+      meetingId: meetingId,
+    );
+  }
+
+  @override
+  Future<void> close() async {
+    await _sub?.cancel();
+    return super.close();
+  }
+}

@@ -5,6 +5,8 @@ import "../models/setup_models.dart";
 
 enum SetupWizardStep {
   welcome,
+  caredFor,
+  location,
   pathways,
   household,
   invites,
@@ -21,26 +23,24 @@ final class SetupWizardState extends Equatable {
     required this.recipients,
     required this.inviteEmails,
     required this.inviteEmailInput,
+    required this.address,
+    required this.addressType,
     this.avatarIndex = 1,
     this.isSubmitting = false,
     this.errorMessage,
   });
 
   factory SetupWizardState.initial() {
-    return SetupWizardState(
+    return const SetupWizardState(
       step: SetupWizardStep.welcome,
-      selectedPathwayIds: const {},
+      selectedPathwayIds: {},
       householdName: "",
       householdDescription: "",
-      recipients: [
-        RecipientDraft(
-          id: newRecipientId(),
-          displayName: "",
-          accessMode: RecipientAccessMode.managed,
-        ),
-      ],
-      inviteEmails: const [],
+      recipients: [],
+      inviteEmails: [],
       inviteEmailInput: "",
+      address: "",
+      addressType: CareAddressType.privateHome,
       avatarIndex: 1,
     );
   }
@@ -69,11 +69,11 @@ final class SetupWizardState extends Equatable {
       selectedPathwayIds: pathways.toSet(),
       householdName: draft["householdName"] as String? ?? "",
       householdDescription: draft["householdDescription"] as String? ?? "",
-      recipients: recipients.isEmpty
-          ? SetupWizardState.initial().recipients
-          : recipients,
+      recipients: recipients,
       inviteEmails: (draft["inviteEmails"] as List?)?.cast<String>() ?? const [],
       inviteEmailInput: "",
+      address: draft["address"] as String? ?? "",
+      addressType: careAddressTypeFromStorage(draft["addressType"] as String?),
       avatarIndex: (draft["avatarIndex"] as num?)?.toInt() ?? 1,
     );
   }
@@ -85,6 +85,8 @@ final class SetupWizardState extends Equatable {
   final List<RecipientDraft> recipients;
   final List<String> inviteEmails;
   final String inviteEmailInput;
+  final String address;
+  final CareAddressType addressType;
   final int avatarIndex;
   final bool isSubmitting;
   final String? errorMessage;
@@ -97,6 +99,8 @@ final class SetupWizardState extends Equatable {
       "householdDescription": householdDescription,
       "recipients": recipients.map((e) => e.toMap()).toList(),
       "inviteEmails": inviteEmails,
+      "address": address,
+      "addressType": addressType.storageName,
       "avatarIndex": avatarIndex,
     };
   }
@@ -109,6 +113,8 @@ final class SetupWizardState extends Equatable {
     List<RecipientDraft>? recipients,
     List<String>? inviteEmails,
     String? inviteEmailInput,
+    String? address,
+    CareAddressType? addressType,
     int? avatarIndex,
     bool? isSubmitting,
     String? errorMessage,
@@ -122,6 +128,8 @@ final class SetupWizardState extends Equatable {
       recipients: recipients ?? this.recipients,
       inviteEmails: inviteEmails ?? this.inviteEmails,
       inviteEmailInput: inviteEmailInput ?? this.inviteEmailInput,
+      address: address ?? this.address,
+      addressType: addressType ?? this.addressType,
       avatarIndex: avatarIndex ?? this.avatarIndex,
       isSubmitting: isSubmitting ?? this.isSubmitting,
       errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
@@ -137,6 +145,8 @@ final class SetupWizardState extends Equatable {
         recipients,
         inviteEmails,
         inviteEmailInput,
+        address,
+        addressType,
         avatarIndex,
         isSubmitting,
         errorMessage,

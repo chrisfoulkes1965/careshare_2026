@@ -1,39 +1,76 @@
 import "package:equatable/equatable.dart";
 
+const String kSelfRecipientId = "rcp_self";
+
 enum RecipientAccessMode { managed, limitedApp }
+
+/// Where the care group mainly receives support (one address for everyone at this location).
+enum CareAddressType {
+  privateHome,
+  careHome,
+  assistedLiving,
+  hospice,
+  hospital,
+  other,
+}
+
+extension CareAddressTypeX on CareAddressType {
+  String get storageName => name;
+
+  String get label => switch (this) {
+        CareAddressType.privateHome => "Private home",
+        CareAddressType.careHome => "Care / nursing home",
+        CareAddressType.assistedLiving => "Assisted / supported living",
+        CareAddressType.hospice => "Hospice",
+        CareAddressType.hospital => "Hospital (inpatient)",
+        CareAddressType.other => "Other",
+      };
+}
+
+CareAddressType careAddressTypeFromStorage(String? s) {
+  if (s == null || s.isEmpty) return CareAddressType.privateHome;
+  return CareAddressType.values.firstWhere(
+    (e) => e.name == s,
+    orElse: () => CareAddressType.privateHome,
+  );
+}
 
 final class RecipientDraft extends Equatable {
   const RecipientDraft({
     required this.id,
     required this.displayName,
     required this.accessMode,
+    this.isSelf = false,
   });
 
   final String id;
   final String displayName;
   final RecipientAccessMode accessMode;
+  final bool isSelf;
 
   Map<String, dynamic> toMap() {
     return {
       "id": id,
       "displayName": displayName,
       "accessMode": accessMode.name,
+      if (isSelf) "isSelf": true,
     };
   }
 
   static RecipientDraft fromMap(Map<String, dynamic> map) {
     return RecipientDraft(
       id: map["id"] as String,
-      displayName: map["displayName"] as String,
+      displayName: map["displayName"] as String? ?? "",
       accessMode: RecipientAccessMode.values.firstWhere(
         (e) => e.name == map["accessMode"],
         orElse: () => RecipientAccessMode.managed,
       ),
+      isSelf: map["isSelf"] == true,
     );
   }
 
   @override
-  List<Object?> get props => [id, displayName, accessMode];
+  List<Object?> get props => [id, displayName, accessMode, isSelf];
 }
 
 final class CarePathwayOption extends Equatable {
@@ -53,6 +90,12 @@ final class CarePathwayOption extends Equatable {
 
 final class SetupPathways {
   static const List<CarePathwayOption> all = [
+    CarePathwayOption(
+      id: "self_care_health",
+      title: "Caring for myself",
+      description:
+          "My medical needs, medications, GP and specialist visits, tests, and follow-ups — organise your own care in one place.",
+    ),
     CarePathwayOption(
       id: "elderly_care",
       title: "Elderly care",

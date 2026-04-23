@@ -6,6 +6,8 @@ import "package:google_sign_in/google_sign_in.dart";
 class AuthRepository {
   AuthRepository({required bool firebaseReady}) : _firebaseReady = firebaseReady;
 
+  static Future<void>? _googleSignInInit;
+
   final bool _firebaseReady;
 
   bool get isAuthAvailable => _firebaseReady;
@@ -33,23 +35,51 @@ class AuthRepository {
     );
   }
 
+  Future<void> createUserWithEmailAndPassword({
+    required String email,
+    required String password,
+  }) async {
+    _ensureFirebase();
+    await FirebaseAuth.instance.createUserWithEmailAndPassword(
+      email: email.trim(),
+      password: password,
+    );
+  }
+
   Future<void> signInWithGoogle() async {
     _ensureFirebase();
     if (kIsWeb) {
-      throw UnsupportedError(
-        "Google sign-in on web is not wired in this scaffold yet. Use email/password, "
-        "or add a web OAuth flow (redirect/popup) via Firebase Auth.",
-      );
+      // Web: Firebase JS SDK opens the Google OAuth popup (no `google_sign_in` plugin).
+      final provider = GoogleAuthProvider();
+      provider.addScope("email");
+      provider.addScope("profile");
+      try {
+        await FirebaseAuth.instance.signInWithPopup(provider);
+      } on FirebaseAuthException catch (e) {
+        if (_isWebGoogleSignInCancelled(e)) {
+          throw const GoogleSignInCancelledException();
+        }
+        rethrow;
+      }
+      return;
     }
 
-    final googleUser = await GoogleSignIn().signIn();
-    if (googleUser == null) {
-      throw const GoogleSignInCancelledException();
+    // google_sign_in 7+: single instance; [initialize] must complete before [authenticate].
+    _googleSignInInit ??= GoogleSignIn.instance.initialize();
+    await _googleSignInInit;
+
+    final GoogleSignInAccount googleUser;
+    try {
+      googleUser = await GoogleSignIn.instance.authenticate();
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled) {
+        throw const GoogleSignInCancelledException();
+      }
+      rethrow;
     }
 
-    final googleAuth = await googleUser.authentication;
+    final googleAuth = googleUser.authentication;
     final credential = GoogleAuthProvider.credential(
-      accessToken: googleAuth.accessToken,
       idToken: googleAuth.idToken,
     );
 
@@ -58,9 +88,13 @@ class AuthRepository {
 
   Future<void> signOut() async {
     if (!_firebaseReady) return;
+    if (!kIsWeb) {
+      _googleSignInInit ??= GoogleSignIn.instance.initialize();
+      await _googleSignInInit;
+    }
     await Future.wait([
       FirebaseAuth.instance.signOut(),
-      if (!kIsWeb) GoogleSignIn().signOut(),
+      if (!kIsWeb) GoogleSignIn.instance.signOut(),
     ]);
   }
 
@@ -73,6 +107,17 @@ class AuthRepository {
     if (!_firebaseReady) {
       throw StateError("Firebase is not initialised. Run flutterfire configure.");
     }
+  }
+}
+
+/// User closed the OAuth popup or dismissed the sign-in.
+bool _isWebGoogleSignInCancelled(FirebaseAuthException e) {
+  switch (e.code) {
+    case "popup-closed-by-user":
+    case "cancelled-popup-request":
+      return true;
+    default:
+      return false;
   }
 }
 

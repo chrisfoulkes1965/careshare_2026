@@ -297,7 +297,7 @@ service cloud.firestore {
       allow read: if isHouseholdMember(householdId);
 
       allow create: if signedIn()
-        && request.resource.data.keys().hasAll(['name', 'careGroupId', 'recipientIds', 'pathwayIds', 'createdBy', 'createdAt'])
+        && request.resource.data.keys().hasAll(['name', 'careGroupId', 'recipientIds', 'pathwayIds', 'address', 'addressType', 'createdBy', 'createdAt'])
         && request.resource.data.createdBy == request.auth.uid
         && isCareGroupMember(request.resource.data.careGroupId);
 

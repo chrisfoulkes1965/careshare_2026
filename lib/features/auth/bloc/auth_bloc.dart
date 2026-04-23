@@ -3,6 +3,7 @@ import "dart:async";
 import "package:firebase_auth/firebase_auth.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 
+import "../../../core/medication_reminders/medication_notification_service.dart";
 import "../repository/auth_repository.dart";
 import "auth_event.dart";
 import "auth_state.dart";
@@ -14,6 +15,7 @@ final class AuthBloc extends Bloc<AuthEvent, AuthState> {
     on<AuthSubscriptionRequested>(_onSubscriptionRequested);
     on<AuthUserChanged>(_onUserChanged);
     on<AuthSignInWithEmailRequested>(_onSignInWithEmail);
+    on<AuthRegisterWithEmailRequested>(_onRegisterWithEmail);
     on<AuthSignInWithGoogleRequested>(_onSignInWithGoogle);
     on<AuthSignOutRequested>(_onSignOut);
 
@@ -37,8 +39,20 @@ final class AuthBloc extends Bloc<AuthEvent, AuthState> {
       return;
     }
 
+    // Resolve the initial auth state immediately so router redirects do not
+    // wait forever for the first stream emission on some devices.
+    final currentUser = _repository.currentUser;
+    if (currentUser == null) {
+      emit(const AuthState.unauthenticated());
+    } else {
+      emit(AuthState.authenticated(currentUser));
+    }
+
     _authSub = _repository.authStateChanges().listen(
       (user) => add(AuthUserChanged(user)),
+      onError: (Object error, StackTrace stackTrace) {
+        add(const AuthUserChanged(null));
+      },
     );
   }
 
@@ -67,6 +81,22 @@ final class AuthBloc extends Bloc<AuthEvent, AuthState> {
     }
   }
 
+  Future<void> _onRegisterWithEmail(
+    AuthRegisterWithEmailRequested event,
+    Emitter<AuthState> emit,
+  ) async {
+    try {
+      await _repository.createUserWithEmailAndPassword(
+        email: event.email,
+        password: event.password,
+      );
+    } on FirebaseAuthException catch (e) {
+      emit(AuthState.unauthenticated(errorMessage: e.message ?? e.code));
+    } catch (e) {
+      emit(AuthState.unauthenticated(errorMessage: e.toString()));
+    }
+  }
+
   Future<void> _onSignInWithGoogle(
     AuthSignInWithGoogleRequested event,
     Emitter<AuthState> emit,
@@ -83,6 +113,7 @@ final class AuthBloc extends Bloc<AuthEvent, AuthState> {
   }
 
   Future<void> _onSignOut(AuthSignOutRequested event, Emitter<AuthState> emit) async {
+    await MedicationNotificationService.instance.cancelAll();
     await _repository.signOut();
   }
 

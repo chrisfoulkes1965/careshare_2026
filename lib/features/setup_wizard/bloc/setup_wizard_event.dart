@@ -1,6 +1,6 @@
 import "package:equatable/equatable.dart";
 
-import "../models/setup_models.dart";
+import "../models/setup_models.dart" show CareAddressType, RecipientAccessMode;
 
 sealed class SetupWizardEvent extends Equatable {
   const SetupWizardEvent();
@@ -42,6 +42,33 @@ final class SetupWizardHouseholdDescriptionChanged extends SetupWizardEvent {
 
   @override
   List<Object?> get props => [value];
+}
+
+final class SetupWizardAddressChanged extends SetupWizardEvent {
+  const SetupWizardAddressChanged(this.value);
+
+  final String value;
+
+  @override
+  List<Object?> get props => [value];
+}
+
+final class SetupWizardAddressTypeChanged extends SetupWizardEvent {
+  const SetupWizardAddressTypeChanged(this.value);
+
+  final CareAddressType value;
+
+  @override
+  List<Object?> get props => [value];
+}
+
+final class SetupWizardCaredForMyselfToggled extends SetupWizardEvent {
+  const SetupWizardCaredForMyselfToggled(this.enabled);
+
+  final bool enabled;
+
+  @override
+  List<Object?> get props => [enabled];
 }
 
 final class SetupWizardRecipientNameChanged extends SetupWizardEvent {

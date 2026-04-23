@@ -1,5 +1,6 @@
 import "package:equatable/equatable.dart";
 
+import "../care_group/models/care_group_option.dart";
 import "../user/models/user_profile.dart";
 
 sealed class ProfileState extends Equatable {
@@ -18,12 +19,21 @@ final class ProfileLoading extends ProfileState {
 }
 
 final class ProfileReady extends ProfileState {
-  const ProfileReady(this.profile);
+  const ProfileReady(
+    this.profile, {
+    this.careGroupOptions = const [],
+    this.requiresCareGroupSelection = false,
+  });
 
   final UserProfile profile;
+  final List<CareGroupOption> careGroupOptions;
+
+  /// When true, the user has more than one care group to choose from and must pick
+  /// a valid [UserProfile.activeHouseholdId] (or [selectActiveCareGroup] has not been called yet).
+  final bool requiresCareGroupSelection;
 
   @override
-  List<Object?> get props => [profile];
+  List<Object?> get props => [profile, careGroupOptions, requiresCareGroupSelection];
 }
 
 final class ProfileError extends ProfileState {

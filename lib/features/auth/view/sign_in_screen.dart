@@ -1,6 +1,7 @@
 import "package:firebase_auth/firebase_auth.dart";
 import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
+import "package:go_router/go_router.dart";
 
 import "../../../core/constants/app_constants.dart";
 import "../../../core/theme/app_colors.dart";
@@ -132,6 +133,11 @@ class _SignInScreenState extends State<SignInScreen> {
                         FilledButton(
                           onPressed: firebaseReady ? _submitEmailPassword : null,
                           child: const Text("Sign in"),
+                        ),
+                        const SizedBox(height: 8),
+                        OutlinedButton(
+                          onPressed: firebaseReady ? () => context.push("/register") : null,
+                          child: const Text("Create account"),
                         ),
                         const SizedBox(height: 12),
                         OutlinedButton.icon(

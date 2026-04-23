@@ -23,6 +23,9 @@ final class SetupWizardBloc extends Bloc<SetupWizardEvent, SetupWizardState> {
     on<SetupWizardPathwayToggled>(_onPathwayToggled);
     on<SetupWizardHouseholdNameChanged>(_onHouseholdName);
     on<SetupWizardHouseholdDescriptionChanged>(_onHouseholdDescription);
+    on<SetupWizardAddressChanged>(_onAddress);
+    on<SetupWizardAddressTypeChanged>(_onAddressType);
+    on<SetupWizardCaredForMyselfToggled>(_onCaredForMyselfToggled);
     on<SetupWizardRecipientNameChanged>(_onRecipientName);
     on<SetupWizardRecipientAccessChanged>(_onRecipientAccess);
     on<SetupWizardRecipientAdded>(_onRecipientAdded);
@@ -104,6 +107,52 @@ final class SetupWizardBloc extends Bloc<SetupWizardEvent, SetupWizardState> {
     await _persistDraft(updated);
   }
 
+  Future<void> _onAddress(SetupWizardAddressChanged event, Emitter<SetupWizardState> emit) async {
+    final updated = state.copyWith(address: event.value, clearError: true);
+    emit(updated);
+    await _persistDraft(updated);
+  }
+
+  Future<void> _onAddressType(SetupWizardAddressTypeChanged event, Emitter<SetupWizardState> emit) async {
+    final updated = state.copyWith(addressType: event.value, clearError: true);
+    emit(updated);
+    await _persistDraft(updated);
+  }
+
+  String _defaultSelfDisplayName() {
+    return _authBloc.state.user?.displayName?.trim().isNotEmpty == true
+        ? _authBloc.state.user!.displayName!.trim()
+        : (_authBloc.state.user?.email?.split("@").first ?? "Me");
+  }
+
+  Future<void> _onCaredForMyselfToggled(
+    SetupWizardCaredForMyselfToggled event,
+    Emitter<SetupWizardState> emit,
+  ) async {
+    if (event.enabled) {
+      if (state.recipients.any((r) => r.isSelf)) {
+        return;
+      }
+      final withSelf = [
+        RecipientDraft(
+          id: kSelfRecipientId,
+          displayName: _defaultSelfDisplayName(),
+          accessMode: RecipientAccessMode.managed,
+          isSelf: true,
+        ),
+        ...state.recipients,
+      ];
+      final updated = state.copyWith(recipients: withSelf, clearError: true);
+      emit(updated);
+      await _persistDraft(updated);
+    } else {
+      final list = state.recipients.where((r) => !r.isSelf).toList();
+      final updated = state.copyWith(recipients: list, clearError: true);
+      emit(updated);
+      await _persistDraft(updated);
+    }
+  }
+
   Future<void> _onRecipientName(
     SetupWizardRecipientNameChanged event,
     Emitter<SetupWizardState> emit,
@@ -111,7 +160,12 @@ final class SetupWizardBloc extends Bloc<SetupWizardEvent, SetupWizardState> {
     final list = state.recipients
         .map(
           (r) => r.id == event.id
-              ? RecipientDraft(id: r.id, displayName: event.name, accessMode: r.accessMode)
+              ? RecipientDraft(
+                  id: r.id,
+                  displayName: event.name,
+                  accessMode: r.accessMode,
+                  isSelf: r.isSelf,
+                )
               : r,
         )
         .toList();
@@ -127,7 +181,12 @@ final class SetupWizardBloc extends Bloc<SetupWizardEvent, SetupWizardState> {
     final list = state.recipients
         .map(
           (r) => r.id == event.id
-              ? RecipientDraft(id: r.id, displayName: r.displayName, accessMode: event.mode)
+              ? RecipientDraft(
+                  id: r.id,
+                  displayName: r.displayName,
+                  accessMode: event.mode,
+                  isSelf: r.isSelf,
+                )
               : r,
         )
         .toList();
@@ -146,6 +205,7 @@ final class SetupWizardBloc extends Bloc<SetupWizardEvent, SetupWizardState> {
         id: newRecipientId(),
         displayName: "",
         accessMode: RecipientAccessMode.managed,
+        isSelf: false,
       ),
     ];
     final updated = state.copyWith(recipients: updatedList, clearError: true);
@@ -157,7 +217,9 @@ final class SetupWizardBloc extends Bloc<SetupWizardEvent, SetupWizardState> {
     SetupWizardRecipientRemoved event,
     Emitter<SetupWizardState> emit,
   ) async {
-    if (state.recipients.length <= 1) return;
+    final matches = state.recipients.where((r) => r.id == event.id);
+    if (matches.isEmpty) return;
+    if (matches.first.isSelf) return;
     final updatedList = state.recipients.where((r) => r.id != event.id).toList();
     final updated = state.copyWith(recipients: updatedList, clearError: true);
     emit(updated);
@@ -246,9 +308,12 @@ final class SetupWizardBloc extends Bloc<SetupWizardEvent, SetupWizardState> {
                   id: r.id,
                   displayName: r.displayName.trim(),
                   accessMode: r.accessMode,
+                  isSelf: r.isSelf,
                 ),
               )
               .toList(),
+          address: state.address.trim(),
+          addressType: state.addressType,
           inviteEmails: state.inviteEmails,
           avatarIndex: state.avatarIndex,
           principalDisplayName: principalName,
@@ -261,9 +326,29 @@ final class SetupWizardBloc extends Bloc<SetupWizardEvent, SetupWizardState> {
     }
   }
 
+  bool _hasValidCaredFor(SetupWizardState s) {
+    for (final r in s.recipients) {
+      if (r.displayName.trim().isNotEmpty) return true;
+    }
+    return false;
+  }
+
   String? _validateForStep(SetupWizardState s, {bool includeSummary = false}) {
     switch (s.step) {
       case SetupWizardStep.welcome:
+        return null;
+      case SetupWizardStep.caredFor:
+        if (s.recipients.isEmpty) {
+          return "Add who is being cared for, or choose “Myself”.";
+        }
+        if (!_hasValidCaredFor(s)) {
+          return "Enter a name for each person listed (including yourself if selected).";
+        }
+        return null;
+      case SetupWizardStep.location:
+        if (s.address.trim().isEmpty) {
+          return "Enter the address for this care group.";
+        }
         return null;
       case SetupWizardStep.pathways:
         if (s.selectedPathwayIds.isEmpty) {
@@ -272,11 +357,7 @@ final class SetupWizardBloc extends Bloc<SetupWizardEvent, SetupWizardState> {
         return null;
       case SetupWizardStep.household:
         if (s.householdName.trim().isEmpty) {
-          return "Name your household.";
-        }
-        final namesOk = s.recipients.every((r) => r.displayName.trim().isNotEmpty);
-        if (!namesOk) {
-          return "Add a name for each care recipient.";
+          return "Name your care group.";
         }
         return null;
       case SetupWizardStep.invites:
@@ -284,11 +365,12 @@ final class SetupWizardBloc extends Bloc<SetupWizardEvent, SetupWizardState> {
         return null;
       case SetupWizardStep.summary:
         if (!includeSummary) return null;
-        if (s.selectedPathwayIds.isEmpty) return "Choose at least one care pathway.";
-        if (s.householdName.trim().isEmpty) return "Name your household.";
-        if (!s.recipients.every((r) => r.displayName.trim().isNotEmpty)) {
-          return "Add a name for each care recipient.";
+        if (!_hasValidCaredFor(s)) {
+          return "Enter a name for each person listed (including yourself if selected).";
         }
+        if (s.address.trim().isEmpty) return "Enter the address for this care group.";
+        if (s.selectedPathwayIds.isEmpty) return "Choose at least one care pathway.";
+        if (s.householdName.trim().isEmpty) return "Name your care group.";
         return null;
     }
   }

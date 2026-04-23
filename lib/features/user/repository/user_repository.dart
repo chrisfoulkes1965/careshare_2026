@@ -1,6 +1,7 @@
 import "package:cloud_firestore/cloud_firestore.dart";
 import "package:firebase_auth/firebase_auth.dart";
 
+import "../../care_group/models/care_group_option.dart";
 import "../models/user_profile.dart";
 
 class UserRepository {
@@ -49,6 +50,72 @@ class UserRepository {
   Future<void> updateProfileFields(String uid, Map<String, dynamic> data) async {
     if (!_firebaseReady) return;
     await _userRef(uid).update(data);
+  }
+
+  /// Sets [activeHouseholdId] and [activeCareGroupId] on the user (Firestore field names).
+  Future<void> setActiveCareGroup({
+    required String uid,
+    required String householdId,
+    required String careGroupId,
+  }) async {
+    if (!_firebaseReady) return;
+    await _userRef(uid).update({
+      "activeHouseholdId": householdId,
+      "activeCareGroupId": careGroupId,
+    });
+  }
+
+  /// Every care group where `members/{uid}` exists; deduped by home id, sorted by name.
+  ///
+  /// Uses a [collectionGroup] query on `members` and reads linked `careGroups` + `households`
+  /// for display names. May require a Firestore index for the collection group query
+  /// (the console or CLI will link one if needed).
+  Future<List<CareGroupOption>> listCareGroupsForUser(String uid) async {
+    if (!_firebaseReady) return const [];
+
+    final membersSnap = await FirebaseFirestore.instance
+        .collectionGroup("members")
+        .where(FieldPath.documentId, isEqualTo: uid)
+        .get();
+
+    if (membersSnap.docs.isEmpty) {
+      return const [];
+    }
+
+    final byHome = <String, CareGroupOption>{};
+
+    for (final memberDoc in membersSnap.docs) {
+      final careGroupRef = memberDoc.reference.parent.parent;
+      if (careGroupRef == null) continue;
+      final careGroupId = careGroupRef.id;
+
+      final cgSnap = await FirebaseFirestore.instance.collection("careGroups").doc(careGroupId).get();
+      if (!cgSnap.exists) continue;
+      final cgData = cgSnap.data()!;
+      final householdId = cgData["householdId"] as String?;
+      if (householdId == null || householdId.isEmpty) continue;
+      if (byHome.containsKey(householdId)) continue;
+
+      var name = (cgData["name"] as String?)?.trim() ?? "Care group";
+      final hSnap = await FirebaseFirestore.instance.collection("households").doc(householdId).get();
+      if (hSnap.exists) {
+        final hn = (hSnap.data()?["name"] as String?)?.trim();
+        if (hn != null && hn.isNotEmpty) {
+          name = hn;
+        }
+      }
+      byHome[householdId] = CareGroupOption(
+        householdId: householdId,
+        careGroupId: careGroupId,
+        displayName: name,
+      );
+    }
+
+    final list = byHome.values.toList();
+    list.sort(
+      (a, b) => a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()),
+    );
+    return list;
   }
 
   UserProfile _map(String uid, Map<String, dynamic> data) {

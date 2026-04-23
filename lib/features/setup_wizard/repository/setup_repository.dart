@@ -12,6 +12,8 @@ final class SetupSubmit {
     required this.inviteEmails,
     required this.avatarIndex,
     required this.principalDisplayName,
+    required this.address,
+    required this.addressType,
   });
 
   final String householdName;
@@ -21,6 +23,8 @@ final class SetupSubmit {
   final List<String> inviteEmails;
   final int? avatarIndex;
   final String principalDisplayName;
+  final String address;
+  final CareAddressType addressType;
 }
 
 class SetupRepository {
@@ -75,34 +79,42 @@ class SetupRepository {
 
     final recipientIds = submit.recipients.map((r) => r.id).toList();
 
-    final coreBatch = firestore.batch();
+    // Two-phase writes: Firestore evaluates each operation in a batch
+    // independently. `households` create requires `isCareGroupMember(careGroupId)`,
+    // which needs `careGroups/{id}/members/{uid}` to already exist — so commit
+    // the care group + principal member first, then household + invites.
+    final groupBatch = firestore.batch();
 
-    coreBatch.set(cgRef, {
+    groupBatch.set(cgRef, {
       "householdId": hhId,
       "name": submit.householdName.trim(),
       "createdBy": uid,
       "createdAt": now,
     });
 
-    coreBatch.set(cgRef.collection("members").doc(uid), {
+    groupBatch.set(cgRef.collection("members").doc(uid), {
       "roles": ["principal_carer"],
       "displayName": submit.principalDisplayName.trim(),
       "joinedAt": now,
       "kudosScore": 0,
     });
 
-    coreBatch.set(hhRef, {
+    await groupBatch.commit();
+
+    final householdBatch = firestore.batch();
+    householdBatch.set(hhRef, {
       "name": submit.householdName.trim(),
       "description": submit.householdDescription.trim(),
       "careGroupId": cgId,
       "recipientIds": recipientIds,
       "pathwayIds": submit.pathwayIds,
       "recipientProfiles": submit.recipients.map((e) => e.toMap()).toList(),
+      "address": submit.address.trim(),
+      "addressType": submit.addressType.name,
       "createdBy": uid,
       "createdAt": now,
     });
-
-    await coreBatch.commit();
+    await householdBatch.commit();
 
     final followUp = firestore.batch();
     for (final email in _normaliseEmails(submit.inviteEmails)) {
