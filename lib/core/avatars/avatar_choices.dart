@@ -1,13 +1,11 @@
-import "dart:convert";
-
 import "package:flutter/material.dart";
 import "package:flutter/services.dart";
 
 import "../theme/app_colors.dart";
 
-/// Default pattern if the asset manifest cannot be read (or folder is empty).
-const int kSetupAvatarFileCount = 24;
-const String kSetupAvatarFileExtension = "png";
+/// Fallback when [AssetManifest] is unavailable — must match real files (this project uses .jpg).
+const int kSetupAvatarFileCount = 48;
+const String kSetupAvatarFileExtension = "jpg";
 
 /// Fallback paths when manifest discovery finds nothing (e.g. hot-reload before full restart).
 final List<String> kSetupAvatarAssetPaths = List<String>.unmodifiable([
@@ -19,7 +17,8 @@ final List<String> kSetupAvatarAssetPaths = List<String>.unmodifiable([
 List<String> _resolvedAvatarPaths = List<String>.from(kSetupAvatarAssetPaths);
 
 /// Call once at startup (e.g. from [main]) after [WidgetsFlutterBinding.ensureInitialized].
-/// Scans [AssetManifest.json] so **any** image files you add to the folder are used — not only `avatar1.png`.
+/// Lists assets via [AssetManifest] (replaces removed `AssetManifest.json`) so any images
+/// you add under [assets/images/avatars/] are picked up, including .jpg, .png, or .webp.
 Future<void> initAvatarAssetPaths([AssetBundle? bundle]) async {
   final b = bundle ?? rootBundle;
   final discovered = await _discoverAvatarPathsFromManifest(b);
@@ -30,12 +29,17 @@ Future<void> initAvatarAssetPaths([AssetBundle? bundle]) async {
 
 Future<List<String>> _discoverAvatarPathsFromManifest(AssetBundle bundle) async {
   try {
-    final raw = await bundle.loadString("AssetManifest.json");
-    final map = jsonDecode(raw) as Map<String, dynamic>;
-    final prefix = "assets/images/avatars/";
+    final manifest = await AssetManifest.loadFromAssetBundle(bundle);
+    const prefix = "assets/images/avatars/";
     final out = <String>[];
-    for (final key in map.keys) {
-      if (!key.startsWith(prefix)) continue;
+    for (final key in manifest.listAssets()) {
+      if (!key.startsWith(prefix)) {
+        continue;
+      }
+      if (key.split("/").last.startsWith(".")) {
+        // skip e.g. .gitkeep
+        continue;
+      }
       final lower = key.toLowerCase();
       if (lower.endsWith(".png") ||
           lower.endsWith(".jpg") ||
