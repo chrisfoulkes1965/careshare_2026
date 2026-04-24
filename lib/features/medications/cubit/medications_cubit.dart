@@ -1,4 +1,4 @@
-import "dart:async";
+﻿import "dart:async";
 
 import "package:file_picker/file_picker.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
@@ -11,14 +11,14 @@ import "medications_state.dart";
 final class MedicationsCubit extends Cubit<MedicationsState> {
   MedicationsCubit({
     required MedicationsRepository repository,
-    required this.householdId,
+    required this.careGroupId,
   })  : _repository = repository,
         super(const MedicationsInitial());
 
   final MedicationsRepository _repository;
-  final String householdId;
+  final String careGroupId;
 
-  StreamSubscription<List<HouseholdMedication>>? _sub;
+  StreamSubscription<List<CareGroupMedication>>? _sub;
 
   void subscribe() {
     if (!_repository.isAvailable) {
@@ -27,14 +27,18 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
     }
     emit(const MedicationsLoading());
     unawaited(_sub?.cancel());
-    _sub = _repository.watchMedications(householdId).listen(
+    _sub = _repository.watchMedications(careGroupId).listen(
       (list) {
-        unawaited(MedicationNotificationService.instance.syncMedications(householdId, list));
         if (list.isEmpty) {
           emit(const MedicationsEmpty());
         } else {
           emit(MedicationsDisplay(list: list));
         }
+        // Defer: local notification sync can block the platform channel on some OSes; never run in the
+        // same turn as the Firestore write that produced this snapshot.
+        Future(
+          () => MedicationNotificationService.instance.syncMedications(careGroupId, list),
+        );
       },
       onError: (Object e) => emit(MedicationsFailure(e.toString())),
     );
@@ -47,16 +51,24 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
     String notes = "",
     bool reminderEnabled = false,
     List<MedicationReminderTime> reminderTimes = const [],
+    MedicationScheduleType scheduleType = MedicationScheduleType.daily,
+    List<int> scheduleWeekdays = const [],
+    List<int> scheduleMonthDays = const [],
+    int? quantityOnHand,
     PlatformFile? image,
   }) {
     return _repository.addMedication(
-      householdId: householdId,
+      careGroupId: careGroupId,
       name: name,
       dosage: dosage,
       instructions: instructions,
       notes: notes,
       reminderEnabled: reminderEnabled,
       reminderTimes: reminderTimes,
+      scheduleType: scheduleType,
+      scheduleWeekdays: scheduleWeekdays,
+      scheduleMonthDays: scheduleMonthDays,
+      quantityOnHand: quantityOnHand,
       image: image,
     );
   }
@@ -69,11 +81,16 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
     String notes = "",
     bool reminderEnabled = false,
     List<MedicationReminderTime> reminderTimes = const [],
+    MedicationScheduleType scheduleType = MedicationScheduleType.daily,
+    List<int> scheduleWeekdays = const [],
+    List<int> scheduleMonthDays = const [],
+    int? quantityOnHand,
+    bool clearQuantity = false,
     bool clearPhoto = false,
     PlatformFile? newImage,
   }) {
     return _repository.updateMedication(
-      householdId: householdId,
+      careGroupId: careGroupId,
       medicationId: medicationId,
       name: name,
       dosage: dosage,
@@ -81,6 +98,11 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
       notes: notes,
       reminderEnabled: reminderEnabled,
       reminderTimes: reminderTimes,
+      scheduleType: scheduleType,
+      scheduleWeekdays: scheduleWeekdays,
+      scheduleMonthDays: scheduleMonthDays,
+      quantityOnHand: quantityOnHand,
+      clearQuantity: clearQuantity,
       clearPhoto: clearPhoto,
       newImage: newImage,
     );
@@ -88,7 +110,7 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
 
   Future<void> deleteMedication(String medicationId) {
     return _repository.deleteMedication(
-      householdId: householdId,
+      careGroupId: careGroupId,
       medicationId: medicationId,
     );
   }

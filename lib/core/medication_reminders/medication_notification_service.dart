@@ -1,24 +1,47 @@
+﻿import "dart:async";
+
 import "package:flutter/foundation.dart";
 import "package:flutter_local_notifications/flutter_local_notifications.dart";
 import "package:flutter_timezone/flutter_timezone.dart";
 import "package:timezone/data/latest_all.dart" as tz_data;
 import "package:timezone/timezone.dart" as tz;
 
+import "medication_dose_group_planner.dart";
 import "../../features/medications/models/household_medication.dart";
 
-/// Schedules local reminders to take medications (not available on web).
+/// Grouped local reminders; tap opens a confirmation flow (set [setDosePayloadHandler] from [app.dart]).
 final class MedicationNotificationService {
   MedicationNotificationService._();
   static final MedicationNotificationService instance = MedicationNotificationService._();
 
   final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
   bool _ready = false;
-  String? _lastHouseholdId;
-  List<HouseholdMedication> _lastMeds = const [];
+  String? _lastCareGroupId;
+  List<CareGroupMedication> _lastMeds = const [];
+  void Function(String payload)? _dosePayloadHandler;
+  final List<String> _deferredDosePayloads = [];
 
-  static const int _idBase = 5000000;
   static const String _channelId = "careshare_medications";
   static const String _channelName = "Medication reminders";
+
+  void setDosePayloadHandler(void Function(String payload)? handler) {
+    _dosePayloadHandler = handler;
+    for (final p in _deferredDosePayloads) {
+      handler?.call(p);
+    }
+    _deferredDosePayloads.clear();
+  }
+
+  void _handlePayload(String? p) {
+    if (p == null || !p.startsWith("dose|")) {
+      return;
+    }
+    if (_dosePayloadHandler != null) {
+      _dosePayloadHandler!(p);
+    } else {
+      _deferredDosePayloads.add(p);
+    }
+  }
 
   Future<void> init() async {
     if (kIsWeb) {
@@ -51,7 +74,12 @@ final class MedicationNotificationService {
       windows: win,
       linux: linux,
     );
-    await _plugin.initialize(settings: init);
+    await _plugin.initialize(
+      settings: init,
+      onDidReceiveNotificationResponse: (response) {
+        _handlePayload(response.payload);
+      },
+    );
 
     if (defaultTargetPlatform == TargetPlatform.android) {
       await _plugin
@@ -67,16 +95,20 @@ final class MedicationNotificationService {
           ?.requestPermissions(alert: true, badge: true, sound: true);
     }
 
+    final launch = await _plugin.getNotificationAppLaunchDetails();
+    if (launch?.didNotificationLaunchApp == true) {
+      _handlePayload(launch?.notificationResponse?.payload);
+    }
+
     _ready = true;
   }
 
-  /// Call when app returns to foreground so Windows can reschedule one-shot alerts.
   Future<void> onAppResumed() async {
     if (kIsWeb || !_ready) {
       return;
     }
     if (defaultTargetPlatform == TargetPlatform.windows) {
-      final hid = _lastHouseholdId;
+      final hid = _lastCareGroupId;
       if (hid != null && _lastMeds.isNotEmpty) {
         await syncMedications(hid, _lastMeds);
       }
@@ -92,29 +124,38 @@ final class MedicationNotificationService {
     } catch (e) {
       debugPrint("cancelAll: $e");
     }
-    _lastHouseholdId = null;
+    _lastCareGroupId = null;
     _lastMeds = const [];
   }
 
-  Future<void> syncMedications(String householdId, List<HouseholdMedication> meds) async {
+  Future<void> syncMedications(String careGroupId, List<CareGroupMedication> meds) async {
     if (kIsWeb || !_ready) {
       return;
     }
 
-    _lastHouseholdId = householdId;
-    _lastMeds = List<HouseholdMedication>.from(meds);
+    _lastCareGroupId = careGroupId;
+    _lastMeds = List<CareGroupMedication>.from(meds);
 
     try {
-      await _plugin.cancelAll();
+      await _plugin.cancelAll().timeout(
+        const Duration(seconds: 20),
+        onTimeout: () {
+          debugPrint("cancelAll: timed out, continuing sync");
+        },
+      );
     } catch (e) {
       debugPrint("cancel before sync: $e");
+    }
+
+    if (defaultTargetPlatform == TargetPlatform.linux) {
+      return;
     }
 
     const details = NotificationDetails(
       android: AndroidNotificationDetails(
         _channelId,
         _channelName,
-        channelDescription: "Reminders to take prescribed medicine",
+        channelDescription: "Reminders to take prescribed medicine (grouped by time).",
         importance: Importance.high,
         priority: Priority.high,
       ),
@@ -131,46 +172,28 @@ final class MedicationNotificationService {
       windows: WindowsNotificationDetails(),
     );
 
-    for (final m in meds) {
-      if (!m.reminderEnabled || m.name.isEmpty) {
-        continue;
-      }
-      for (var i = 0; i < m.reminderTimes.length; i++) {
-        final time = m.reminderTimes[i];
-        final id = _notificationId(m.id, i);
-        final body = m.dosage.isNotEmpty ? "${m.name} (${m.dosage})" : m.name;
-        final scheduled = _nextTzDateTime(time.hour, time.minute);
-        final isWin = defaultTargetPlatform == TargetPlatform.windows;
-        try {
-          if (defaultTargetPlatform == TargetPlatform.linux) {
-            continue;
-          }
-          await _plugin.zonedSchedule(
-            id: id,
-            title: "Medication",
-            body: "Time to take: $body",
-            scheduledDate: scheduled,
-            notificationDetails: details,
-            androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-            matchDateTimeComponents: isWin ? null : DateTimeComponents.time,
-          );
-        } catch (e, st) {
-          debugPrint("schedule med $id: $e\n$st");
-        }
+    final isWin = defaultTargetPlatform == TargetPlatform.windows;
+    final nudges = buildDoseNudges(
+      careGroupId: careGroupId,
+      meds: meds,
+      isWindows: isWin,
+    );
+
+    for (final n in nudges) {
+      try {
+        await _plugin.zonedSchedule(
+          id: n.notificationId,
+          scheduledDate: n.scheduledDate,
+          notificationDetails: details,
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          title: "Medication",
+          body: n.body,
+          payload: n.payload,
+          matchDateTimeComponents: n.dateTimeMatch,
+        );
+      } catch (e, st) {
+        debugPrint("zonedSchedule dose: $e\n$st");
       }
     }
-  }
-
-  int _notificationId(String medicationId, int slot) {
-    return _idBase + (Object.hash(medicationId, slot).abs() % 800000);
-  }
-
-  tz.TZDateTime _nextTzDateTime(int hour, int minute) {
-    final now = tz.TZDateTime.now(tz.local);
-    var d = tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
-    if (!d.isAfter(now)) {
-      d = d.add(const Duration(days: 1));
-    }
-    return d;
   }
 }

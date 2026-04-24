@@ -1,8 +1,8 @@
 import "package:cloud_firestore/cloud_firestore.dart";
 
-/// `households/{hid}/contacts/{id}` — shared directory for the care team.
-final class HouseholdContact {
-  const HouseholdContact({
+/// `careGroups/{hid}/contacts/{id}` — shared directory for the care team.
+final class CareGroupContact {
+  const CareGroupContact({
     required this.id,
     required this.name,
     this.phone,
@@ -22,11 +22,11 @@ final class HouseholdContact {
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
-  static HouseholdContact fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> d) {
+  static CareGroupContact fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> d) {
     final data = d.data();
     final created = data["createdAt"];
     final updated = data["updatedAt"];
-    return HouseholdContact(
+    return CareGroupContact(
       id: d.id,
       name: (data["name"] as String?)?.trim() ?? "Contact",
       phone: (data["phone"] as String?)?.trim(),

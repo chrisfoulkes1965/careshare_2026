@@ -1,4 +1,4 @@
-import "package:cloud_firestore/cloud_firestore.dart";
+﻿import "package:cloud_firestore/cloud_firestore.dart";
 import "package:firebase_auth/firebase_auth.dart";
 
 import "../models/household_contact.dart";
@@ -10,25 +10,25 @@ class ContactsRepository {
 
   bool get isAvailable => _firebaseReady;
 
-  CollectionReference<Map<String, dynamic>> _contacts(String householdId) {
+  CollectionReference<Map<String, dynamic>> _contacts(String careGroupId) {
     return FirebaseFirestore.instance
-        .collection("households")
-        .doc(householdId)
+        .collection("careGroups")
+        .doc(careGroupId)
         .collection("contacts");
   }
 
-  Stream<List<HouseholdContact>> watchContacts(String householdId) {
+  Stream<List<CareGroupContact>> watchContacts(String careGroupId) {
     if (!_firebaseReady) {
       return const Stream.empty();
     }
-    return _contacts(householdId)
+    return _contacts(careGroupId)
         .orderBy("name")
         .snapshots()
-        .map((s) => s.docs.map(HouseholdContact.fromDoc).toList());
+        .map((s) => s.docs.map(CareGroupContact.fromDoc).toList());
   }
 
   Future<void> addContact({
-    required String householdId,
+    required String careGroupId,
     required String name,
     String phone = "",
     String email = "",
@@ -43,7 +43,7 @@ class ContactsRepository {
     if (n.isEmpty) {
       throw ArgumentError("Name is required.");
     }
-    await _contacts(householdId).add({
+    await _contacts(careGroupId).add({
       "name": n,
       "phone": phone.trim(),
       "email": email.trim(),
@@ -54,7 +54,7 @@ class ContactsRepository {
   }
 
   Future<void> updateContact({
-    required String householdId,
+    required String careGroupId,
     required String contactId,
     required String name,
     String phone = "",
@@ -62,7 +62,7 @@ class ContactsRepository {
     String notes = "",
   }) async {
     if (!_firebaseReady) return;
-    await _contacts(householdId).doc(contactId).update({
+    await _contacts(careGroupId).doc(contactId).update({
       "name": name.trim(),
       "phone": phone.trim(),
       "email": email.trim(),
@@ -72,10 +72,10 @@ class ContactsRepository {
   }
 
   Future<void> deleteContact({
-    required String householdId,
+    required String careGroupId,
     required String contactId,
   }) async {
     if (!_firebaseReady) return;
-    await _contacts(householdId).doc(contactId).delete();
+    await _contacts(careGroupId).doc(contactId).delete();
   }
 }

@@ -1,4 +1,4 @@
-import "package:flutter/material.dart";
+﻿import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
 
@@ -6,9 +6,13 @@ import "../cubit/medications_state.dart";
 import "../../profile/profile_cubit.dart";
 import "../../profile/profile_state.dart";
 import "../cubit/medications_cubit.dart";
+import "../logic/medication_reorder.dart";
 import "../models/household_medication.dart";
+import "../models/medication_care_group_settings.dart";
+import "../repository/medication_care_group_settings_repository.dart";
 import "../repository/medications_repository.dart";
 import "medication_editor_sheet.dart";
+import "medication_inventory_settings_sheet.dart";
 
 class MedicationsScreen extends StatelessWidget {
   const MedicationsScreen({super.key});
@@ -22,8 +26,9 @@ class MedicationsScreen extends StatelessWidget {
             body: Center(child: Text("Loading your profile…")),
           );
         }
-        final hid = state.profile.activeHouseholdId;
-        if (hid == null || hid.isEmpty) {
+        final cg = state.profile.activeCareGroupId;
+        final hh = state.profile.activeHouseholdId;
+        if (cg == null || cg.isEmpty) {
           return Scaffold(
             appBar: AppBar(title: const Text("Prescriptions & reminders")),
             body: const Center(
@@ -38,20 +43,30 @@ class MedicationsScreen extends StatelessWidget {
           );
         }
         return BlocProvider(
-          key: ObjectKey(hid),
+          key: ObjectKey(cg),
           create: (context) => MedicationsCubit(
             repository: context.read<MedicationsRepository>(),
-            householdId: hid,
+            careGroupId: cg,
           )..subscribe(),
-          child: const _MedicationsView(),
+          child: _MedicationsView(householdId: hh),
         );
       },
     );
   }
 }
 
-class _MedicationsView extends StatelessWidget {
-  const _MedicationsView();
+class _MedicationsView extends StatefulWidget {
+  const _MedicationsView({required this.householdId});
+
+  final String? householdId;
+
+  @override
+  State<_MedicationsView> createState() => _MedicationsViewState();
+}
+
+class _MedicationsViewState extends State<_MedicationsView> {
+  String? _dismissedReorderSig;
+  String? _scheduledPostFrameSig;
 
   @override
   Widget build(BuildContext context) {
@@ -64,31 +79,122 @@ class _MedicationsView extends StatelessWidget {
         }
       },
       builder: (context, state) {
-        return Scaffold(
-          appBar: AppBar(
-            title: const Text("Prescriptions & reminders"),
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back),
-              onPressed: () {
-                if (context.canPop()) {
-                  context.pop();
-                } else {
-                  context.go("/home");
-                }
-              },
-            ),
-          ),
-          body: SafeArea(
-            child: _Body(state: state),
-          ),
-          floatingActionButton: (state is MedicationsEmpty || state is MedicationsDisplay)
-              ? FloatingActionButton(
-                  onPressed: () => MedicationEditorSheet.show(context),
-                  child: const Icon(Icons.add),
-                )
-              : null,
+        final hid = widget.householdId;
+        if (hid == null || hid.isEmpty) {
+          return _scaffoldForState(context, state, null);
+        }
+        return StreamBuilder<MedicationInventoryCareGroupSettings>(
+          stream: context.read<MedicationCareGroupSettingsRepository>().watchSettings(hid),
+          builder: (context, settingsSnap) {
+            final st = settingsSnap.data ?? const MedicationInventoryCareGroupSettings();
+            if (state is MedicationsDisplay) {
+              _maybeShowReorderDialog(context, state.list, st);
+            }
+            return _scaffoldForState(context, state, hid);
+          },
         );
       },
+    );
+  }
+
+  void _maybeShowReorderDialog(
+    BuildContext context,
+    List<CareGroupMedication> list,
+    MedicationInventoryCareGroupSettings settings,
+  ) {
+    if (!shouldNudgeBatchReorder(list, settings)) {
+      return;
+    }
+    final batch = medicationsToReorderInWindow(list, settings);
+    if (batch.isEmpty) {
+      return;
+    }
+    final sig = batch
+        .map(
+          (e) =>
+              "${e.id}:${(e.estimatedDaysOfSupply ?? 0).toStringAsFixed(1)}",
+        )
+        .join(",");
+    if (sig == _dismissedReorderSig) {
+      return;
+    }
+    if (sig == _scheduledPostFrameSig) {
+      return;
+    }
+    _scheduledPostFrameSig = sig;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scheduledPostFrameSig = null;
+      if (!context.mounted) {
+        return;
+      }
+      if (sig == _dismissedReorderSig) {
+        return;
+      }
+      showDialog<void>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text("Plan a reorder"),
+          content: SingleChildScrollView(
+            child: Text(
+              "These items are within your reorder window (${settings.reorderWindowDays} d). "
+              "Consider restocking in one go:\n\n"
+              "${batch.map((e) {
+                final d = e.estimatedDaysOfSupply;
+                final ds = d == null ? "—" : "${d.toStringAsFixed(1)} d left";
+                return "• ${e.name} — $ds";
+              }).join("\n")}",
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                _dismissedReorderSig = sig;
+                Navigator.of(ctx).pop();
+              },
+              child: const Text("OK"),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
+  Widget _scaffoldForState(
+    BuildContext context,
+    MedicationsState state,
+    String? householdId,
+  ) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Prescriptions & reminders"),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go("/home");
+            }
+          },
+        ),
+        actions: [
+          if (householdId != null && householdId.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.inventory_2_outlined),
+              tooltip: "Inventory & reorder settings",
+              onPressed: () => MedicationInventorySettingsSheet.show(context, householdId: householdId),
+            ),
+        ],
+      ),
+      body: SafeArea(
+        child: _Body(state: state),
+      ),
+      floatingActionButton: (state is MedicationsEmpty || state is MedicationsDisplay)
+          ? FloatingActionButton(
+              onPressed: () => MedicationEditorSheet.show(context),
+              child: const Icon(Icons.add),
+            )
+          : null,
     );
   }
 }
@@ -120,7 +226,7 @@ class _Body extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              "No medications yet. Add one to store doses and (on phone or desktop) get local reminders.",
+              "No medications yet. Add one to store doses, inventory, and (on phone or desktop) get grouped reminders to confirm you took them.",
               style: Theme.of(context).textTheme.bodyLarge,
               textAlign: TextAlign.center,
             ),
@@ -141,13 +247,13 @@ class _Body extends StatelessWidget {
 class _MedCard extends StatelessWidget {
   const _MedCard({required this.m});
 
-  final HouseholdMedication m;
+  final CareGroupMedication m;
 
   @override
   Widget build(BuildContext context) {
     return Card(
       child: ListTile(
-        isThreeLine: m.instructions.isNotEmpty || m.notes.isNotEmpty,
+        isThreeLine: m.instructions.isNotEmpty || m.notes.isNotEmpty || m.reminderEnabled,
         onTap: () {
           MedicationEditorSheet.show(context, existing: m);
         },
@@ -159,10 +265,15 @@ class _MedCard extends StatelessWidget {
             if (m.reminderEnabled) ...[
               const SizedBox(height: 4),
               Text(
-                m.reminderTimes.isEmpty
-                    ? "Reminders on (add times in edit)"
-                    : "Reminders: ${m.reminderTimes.map((t) => "${t.hour.toString().padLeft(2, "0")}:${t.minute.toString().padLeft(2, "0")}").join(", ")}",
+                m.scheduleSummaryLine,
                 style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+            if (m.reminderEnabled && m.hasValidReminderSchedule && m.reminderTimes.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(
+                m.inventorySummaryLine,
+                style: Theme.of(context).textTheme.labelSmall,
               ),
             ],
             if (m.instructions.isNotEmpty) Text(m.instructions, maxLines: 2, overflow: TextOverflow.ellipsis),

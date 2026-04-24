@@ -1,4 +1,4 @@
-import "package:flutter/material.dart";
+﻿import "package:flutter/material.dart";
 import "package:flutter/services.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
@@ -23,8 +23,8 @@ class ContactsScreen extends StatelessWidget {
             body: Center(child: Text("Loading your profile…")),
           );
         }
-        final hid = state.profile.activeHouseholdId;
-        if (hid == null || hid.isEmpty) {
+        final cg = state.profile.activeCareGroupId;
+        if (cg == null || cg.isEmpty) {
           return Scaffold(
             appBar: AppBar(title: const Text("Contacts")),
             body: const Center(
@@ -39,10 +39,10 @@ class ContactsScreen extends StatelessWidget {
           );
         }
         return BlocProvider(
-          key: ObjectKey(hid),
+          key: ObjectKey(cg),
           create: (context) => ContactsCubit(
             repository: context.read<ContactsRepository>(),
-            householdId: hid,
+            careGroupId: cg,
           )..subscribe(),
           child: const _ContactsView(),
         );
@@ -176,7 +176,7 @@ class _ContactsBody extends StatelessWidget {
   }
 }
 
-Future<void> _openEditor(BuildContext context, HouseholdContact? existing) async {
+Future<void> _openEditor(BuildContext context, CareGroupContact? existing) async {
   final isNew = existing == null;
   final contact = existing;
   final nameC = TextEditingController(text: contact?.name ?? "");

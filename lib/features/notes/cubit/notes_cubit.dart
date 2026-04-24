@@ -1,4 +1,4 @@
-import "dart:async";
+﻿import "dart:async";
 
 import "package:flutter_bloc/flutter_bloc.dart";
 
@@ -9,14 +9,14 @@ import "notes_state.dart";
 final class NotesCubit extends Cubit<NotesState> {
   NotesCubit({
     required NotesRepository repository,
-    required this.householdId,
+    required this.careGroupId,
   })  : _repository = repository,
         super(const NotesInitial());
 
   final NotesRepository _repository;
-  final String householdId;
+  final String careGroupId;
 
-  StreamSubscription<List<HouseholdNote>>? _sub;
+  StreamSubscription<List<CareGroupNote>>? _sub;
 
   void subscribe() {
     if (!_repository.isAvailable) {
@@ -25,7 +25,7 @@ final class NotesCubit extends Cubit<NotesState> {
     }
     emit(const NotesLoading());
     unawaited(_sub?.cancel());
-    _sub = _repository.watchNotes(householdId).listen(
+    _sub = _repository.watchNotes(careGroupId).listen(
       (list) {
         if (list.isEmpty) {
           emit(const NotesEmpty());
@@ -44,7 +44,7 @@ final class NotesCubit extends Cubit<NotesState> {
     String? legalCategory,
   }) {
     return _repository.addNote(
-      householdId: householdId,
+      careGroupId: careGroupId,
       title: title,
       type: type,
       body: body,
@@ -60,7 +60,7 @@ final class NotesCubit extends Cubit<NotesState> {
     String? legalCategory,
   }) {
     return _repository.updateNote(
-      householdId: householdId,
+      careGroupId: careGroupId,
       noteId: noteId,
       title: title,
       type: type,
@@ -71,7 +71,7 @@ final class NotesCubit extends Cubit<NotesState> {
 
   Future<void> deleteNote(String noteId) {
     return _repository.deleteNote(
-      householdId: householdId,
+      careGroupId: careGroupId,
       noteId: noteId,
     );
   }

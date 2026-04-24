@@ -4,9 +4,9 @@ This document maps **roles** and **collections** from the Development Brief to r
 
 ## Definitions
 
-### Who counts as a “household member”?
+### Who counts as a “careGroup member”?
 
-A user `uid` may read/write household-scoped data if they are a member of the **care group linked to that household** (the brief uses `households.careGroupId` and `careGroups.householdId`). Rules should resolve membership via **`careGroups/{careGroupId}/members/{uid}`** (or equivalent denormalised claim) rather than trusting client-supplied `householdId` alone.
+A user `uid` may read/write careGroup-scoped data if they are a member of the **care group linked to that careGroup** (the brief uses `careGroups.careGroupId` and `careGroups.careGroupId`). Rules should resolve membership via **`careGroups/{careGroupId}/members/{uid}`** (or equivalent denormalised claim) rather than trusting client-supplied `careGroupId` alone.
 
 ### Roles (per `careGroups/{id}/members/{uid}.roles[]`)
 
@@ -37,7 +37,7 @@ The brief leaves some edges unspecified; cells marked **TBD** need product sign-
 
 | Operation | Condition / notes |
 |-----------|-------------------|
-| **read** | Self (`request.auth.uid == userId`), or household peers (optional denormalisation for profiles — else load via Cloud Function / limited fields only). |
+| **read** | Self (`request.auth.uid == userId`), or careGroup peers (optional denormalisation for profiles — else load via Cloud Function / limited fields only). |
 | **create** | On first sign-up (`userId == request.auth.uid`) with schema validation. |
 | **update** | Self only; validate mutable fields (`displayName`, `photoUrl`, `avatarIndex`, `phone`, `dateOfBirth`, `simpleMode`, …). Do not allow client to set `careGroupIds` unless you implement server-side membership writes. |
 | **delete** | Prefer **disable Auth** + soft-delete flag; avoid hard delete from client. |
@@ -55,16 +55,16 @@ The brief leaves some edges unspecified; cells marked **TBD** need product sign-
 
 | Operation | Condition / notes |
 |-----------|-------------------|
-| **read** | Authenticated: **`system == true`** pathways for all; **`system == false`**: only creators / households that reference `pathwayId` (needs `pathwayIds` on household or shared allowlist). |
-| **create** | **`principal_carer`** on some household that will own the custom pathway, or admin-only if you centralise custom pathways. |
-| **update / delete** | **`system == true`**: deny client writes; **`system == false`**: creator / principal_carer for linked household only. |
+| **read** | Authenticated: **`system == true`** pathways for all; **`system == false`**: only creators / careGroups that reference `pathwayId` (needs `pathwayIds` on careGroup or shared allowlist). |
+| **create** | **`principal_carer`** on some careGroup that will own the custom pathway, or admin-only if you centralise custom pathways. |
+| **update / delete** | **`system == true`**: deny client writes; **`system == false`**: creator / principal_carer for linked careGroup only. |
 
 ### `careGroups/{careGroupId}`
 
 | Operation | Condition / notes |
 |-----------|-------------------|
 | **read** | Member of `careGroups/{careGroupId}/members/{uid}`. |
-| **create** | Authenticated user creating household+wizard flow (often same as household create). |
+| **create** | Authenticated user creating careGroup+wizard flow (often same as careGroup create). |
 | **update** | **`principal_carer`** on that group (name tweaks, etc.). Tighten if fields are immutable after create. |
 | **delete** | Admin / principal only; prefer soft-archive. |
 
@@ -79,26 +79,26 @@ The brief leaves some edges unspecified; cells marked **TBD** need product sign-
 
 ---
 
-## Household root: `households/{householdId}`
+## CareGroup root: `careGroups/{careGroupId}`
 
-Assume helper `isHouseholdMember(householdId, uid)` → member doc exists on `household.careGroupId`.
+Assume helper `isCareGroupMember(careGroupId, uid)` → member doc exists on `careGroup.careGroupId`.
 
 | Field / op | principal_carer | carer | financial_manager | power_of_attorney | receives_care (limited) |
 |------------|-----------------|-------|---------------------|-------------------|-------------------------|
-| **read** | Yes | Yes | Yes | Yes | Yes, if limited recipient is tied to this household (TBD: prove linkage via `recipientIds` containing a profile id vs `uid`). |
+| **read** | Yes | Yes | Yes | Yes | Yes, if limited recipient is tied to this careGroup (TBD: prove linkage via `recipientIds` containing a profile id vs `uid`). |
 | **create** | Yes (wizard) | Deny (unless you allow co-creation) | Deny | Deny | Deny |
-| **update** (`name`, `description`, `pathwayIds`, `recipientIds`, `address`, `addressType`, `recipientProfiles`) | Yes | Deny or **read-only** (brief: “Edit Household” — assign to principal only unless clarified) | Deny | Deny | Deny |
+| **update** (`name`, `description`, `pathwayIds`, `recipientIds`, `address`, `addressType`, `recipientProfiles`) | Yes | Deny or **read-only** (brief: “Edit CareGroup” — assign to principal only unless clarified) | Deny | Deny | Deny |
 | **update** (`careGroupId`) | Deny from client (server-only link) | Deny | Deny | Deny | Deny |
 
-**Recommendation:** treat household **settings** updates as **`principal_carer`** only; carers consume read-only household summary.
+**Recommendation:** treat careGroup **settings** updates as **`principal_carer`** only; carers consume read-only careGroup summary.
 
 ---
 
-## Household subcollections
+## CareGroup subcollections
 
 Legend: **Y** = allow, **N** = deny, **C** = conditional (see notes), **Fn** = prefer **Cloud Function** / trusted worker for writes.
 
-### `households/{hid}/tasks/{taskId}`
+### `careGroups/{hid}/tasks/{taskId}`
 
 | Op | principal | carer | financial | poa | recipient (limited) |
 |----|-----------|-------|-------------|-----|------------------------|
@@ -109,7 +109,7 @@ Legend: **Y** = allow, **N** = deny, **C** = conditional (see notes), **Fn** = p
 
 **Kudos / comments / voiceNoteUrl:** validate field allow-lists on update so carers cannot escalate privilege via arbitrary field writes.
 
-### `households/{hid}/notes/{noteId}`
+### `careGroups/{hid}/notes/{noteId}`
 
 | Op | principal | carer | financial | poa | recipient |
 |----|-----------|-------|-------------|-----|-------------|
@@ -118,7 +118,7 @@ Legend: **Y** = allow, **N** = deny, **C** = conditional (see notes), **Fn** = p
 | update | Y | Y | N | Y | N |
 | delete / archive | Y | **C** | N | Y | N |
 
-### `households/{hid}/journalEntries/{entryId}`
+### `careGroups/{hid}/journalEntries/{entryId}`
 
 | Op | principal | carer | financial | poa | recipient |
 |----|-----------|-------|-------------|-----|-------------|
@@ -126,7 +126,7 @@ Legend: **Y** = allow, **N** = deny, **C** = conditional (see notes), **Fn** = p
 | create | Y | Y | N | N | N |
 | update | Y | Y (own?) | N | N | N |
 
-### `households/{hid}/medications/{medicationId}`
+### `careGroups/{hid}/medications/{medicationId}`
 
 | Op | principal | carer | financial | poa | recipient |
 |----|-----------|-------|-------------|-----|-------------|
@@ -135,7 +135,7 @@ Legend: **Y** = allow, **N** = deny, **C** = conditional (see notes), **Fn** = p
 
 Brief: medication **configuration** vs **mark taken** — splitting subdocuments or using Cloud Functions avoids carers editing dose/schedule.
 
-### `households/{hid}/expenses/{expenseId}`
+### `careGroups/{hid}/expenses/{expenseId}`
 
 | Op | principal | carer | financial | poa | recipient |
 |----|-----------|-------|-------------|-----|-------------|
@@ -146,14 +146,14 @@ Brief: medication **configuration** vs **mark taken** — splitting subdocuments
 
 **Clarify with product:** are expenses visible to all carers or only **financial_manager** + **principal**?
 
-### `households/{hid}/meetings/{meetingId}`
+### `careGroups/{hid}/meetings/{meetingId}`
 
 | Op | principal | carer | financial | poa | recipient |
 |----|-----------|-------|-------------|-----|-------------|
 | read | Y | Y | Y | Y | N (unless you open meetings to recipient) |
 | create / update | Y | Y | N | N | N |
 
-### `households/{hid}/documents/{documentId}`
+### `careGroups/{hid}/documents/{documentId}`
 
 | Op | principal | carer | financial | poa | recipient |
 |----|-----------|-------|-------------|-----|-------------|
@@ -163,14 +163,14 @@ Brief: medication **configuration** vs **mark taken** — splitting subdocuments
 
 Map **`sensitiveRoles`** on the document to dynamic checks: caller must have intersection of `resource.data.sensitiveRoles` and their `roles[]`.
 
-### `households/{hid}/contacts/{contactId}`
+### `careGroups/{hid}/contacts/{contactId}`
 
 | Op | principal | carer | financial | poa | recipient |
 |----|-----------|-------|-------------|-----|-------------|
 | read | Y | Y | Y | Y | **C** |
 | create / update / delete | Y | Y | N | N | N |
 
-### `households/{hid}/checkins/{checkinId}`
+### `careGroups/{hid}/checkins/{checkinId}`
 
 | Op | principal | carer | financial | poa | recipient |
 |----|-----------|-------|-------------|-----|-------------|
@@ -184,7 +184,7 @@ Map **`sensitiveRoles`** on the document to dynamic checks: caller must have int
 
 ## Chat (not fully specified in Firestore brief)
 
-If implemented as **`careGroups/{careGroupId}/messages/{messageId}`** (recommended) or under `households/{hid}/messages`:
+If implemented as **`careGroups/{careGroupId}/messages/{messageId}`** (recommended) or under `careGroups/{hid}/messages`:
 
 | Op | principal | carer | financial | poa | recipient |
 |----|-----------|-------|-------------|-----|-------------|
@@ -212,11 +212,11 @@ Do not store high-precision location readable by all carers unless the brief exp
 
 ## Implementation checklist
 
-1. **Custom claims vs member doc reads**: Rules that `get()` `careGroups/.../members/{uid}` on every query can get expensive; consider [Firestore bundle rules patterns](https://firebase.google.com/docs/firestore/security/rules-conditions#access_other_documents) or replicated `householdIds[]` on `users` maintained only by **Fn/Admin**.
+1. **Custom claims vs member doc reads**: Rules that `get()` `careGroups/.../members/{uid}` on every query can get expensive; consider [Firestore bundle rules patterns](https://firebase.google.com/docs/firestore/security/rules-conditions#access_other_documents) or replicated `careGroupIds[]` on `users` maintained only by **Fn/Admin**.
 2. **Field-level validation**: Use `request.resource.data.keys().hasOnly([...])` / diff checks so a carer cannot grant themselves `principal_carer` via a poisoned write path.
-3. **Recipient limited user**: Add explicit **`linkedRecipientProfileId`** or `householdId` + `recipientId` on `users` for rules to evaluate **C** rows without ambiguity.
-4. **POA audit trail**: Implement as **`households/{hid}/auditLogs/{id}`** append-only (create via Fn or allow create if `request.resource.data.actorId == request.auth.uid` and deny updates).
-5. **Indexes**: Matrix does not replace required composite indexes for queries filtered by `householdId`, `assignedTo`, `status`, etc.
+3. **Recipient limited user**: Add explicit **`linkedRecipientProfileId`** or `careGroupId` + `recipientId` on `users` for rules to evaluate **C** rows without ambiguity.
+4. **POA audit trail**: Implement as **`careGroups/{hid}/auditLogs/{id}`** append-only (create via Fn or allow create if `request.resource.data.actorId == request.auth.uid` and deny updates).
+5. **Indexes**: Matrix does not replace required composite indexes for queries filtered by `careGroupId`, `assignedTo`, `status`, etc.
 
 ---
 

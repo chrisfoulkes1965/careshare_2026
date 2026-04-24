@@ -1,4 +1,4 @@
-import "package:equatable/equatable.dart";
+﻿import "package:equatable/equatable.dart";
 
 import "../models/household_meeting.dart";
 
@@ -24,7 +24,7 @@ final class MeetingsEmpty extends MeetingsState {
 final class MeetingsDisplay extends MeetingsState {
   const MeetingsDisplay({required this.list});
 
-  final List<HouseholdMeeting> list;
+  final List<CareGroupMeeting> list;
 
   @override
   List<Object?> get props => [list];

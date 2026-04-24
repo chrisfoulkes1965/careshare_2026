@@ -24,8 +24,8 @@ class JournalScreen extends StatelessWidget {
             body: Center(child: Text("Loading your profile…")),
           );
         }
-        final hid = state.profile.activeHouseholdId;
-        if (hid == null || hid.isEmpty) {
+        final cg = state.profile.activeCareGroupId;
+        if (cg == null || cg.isEmpty) {
           return Scaffold(
             appBar: AppBar(title: const Text("Journal")),
             body: const Center(
@@ -40,10 +40,10 @@ class JournalScreen extends StatelessWidget {
           );
         }
         return BlocProvider(
-          key: ObjectKey(hid),
+          key: ObjectKey(cg),
           create: (context) => JournalCubit(
             repository: context.read<JournalRepository>(),
-            householdId: hid,
+            careGroupId: cg,
           )..subscribe(),
           child: const _JournalView(),
         );

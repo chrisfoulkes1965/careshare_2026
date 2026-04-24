@@ -5,8 +5,8 @@ import "../models/setup_models.dart";
 
 final class SetupSubmit {
   const SetupSubmit({
-    required this.householdName,
-    required this.householdDescription,
+    required this.careGroupName,
+    required this.careGroupDescription,
     required this.pathwayIds,
     required this.recipients,
     required this.inviteEmails,
@@ -16,8 +16,8 @@ final class SetupSubmit {
     required this.addressType,
   });
 
-  final String householdName;
-  final String householdDescription;
+  final String careGroupName;
+  final String careGroupDescription;
   final List<String> pathwayIds;
   final List<RecipientDraft> recipients;
   final List<String> inviteEmails;
@@ -70,7 +70,7 @@ class SetupRepository {
     }
 
     final firestore = FirebaseFirestore.instance;
-    final hhRef = firestore.collection("households").doc();
+    final hhRef = firestore.collection("careGroups").doc();
     final hhId = hhRef.id;
     final cgRef = firestore.collection("careGroups").doc();
     final cgId = cgRef.id;
@@ -80,14 +80,14 @@ class SetupRepository {
     final recipientIds = submit.recipients.map((r) => r.id).toList();
 
     // Two-phase writes: Firestore evaluates each operation in a batch
-    // independently. `households` create requires `isCareGroupMember(careGroupId)`,
+    // independently. `careGroups` create requires `isCareGroupMember(careGroupId)`,
     // which needs `careGroups/{id}/members/{uid}` to already exist — so commit
-    // the care group + principal member first, then household + invites.
+    // the care group + principal member first, then careGroup + invites.
     final groupBatch = firestore.batch();
 
     groupBatch.set(cgRef, {
-      "householdId": hhId,
-      "name": submit.householdName.trim(),
+      "careGroupId": hhId,
+      "name": submit.careGroupName.trim(),
       "createdBy": uid,
       "createdAt": now,
     });
@@ -101,10 +101,10 @@ class SetupRepository {
 
     await groupBatch.commit();
 
-    final householdBatch = firestore.batch();
-    householdBatch.set(hhRef, {
-      "name": submit.householdName.trim(),
-      "description": submit.householdDescription.trim(),
+    final careGroupBatch = firestore.batch();
+    careGroupBatch.set(hhRef, {
+      "name": submit.careGroupName.trim(),
+      "description": submit.careGroupDescription.trim(),
       "careGroupId": cgId,
       "recipientIds": recipientIds,
       "pathwayIds": submit.pathwayIds,
@@ -114,7 +114,7 @@ class SetupRepository {
       "createdBy": uid,
       "createdAt": now,
     });
-    await householdBatch.commit();
+    await careGroupBatch.commit();
 
     final followUp = firestore.batch();
     for (final email in _normaliseEmails(submit.inviteEmails)) {

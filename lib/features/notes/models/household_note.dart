@@ -1,9 +1,9 @@
 import "package:cloud_firestore/cloud_firestore.dart";
 
-/// `households/{hid}/notes/{id}` — create rule requires [title, type, createdBy, createdAt].
+/// `careGroups/{hid}/notes/{id}` — create rule requires [title, type, createdBy, createdAt].
 /// Optional: [body], [category] (e.g. `legal` limits read to principal/POA per rules).
-final class HouseholdNote {
-  const HouseholdNote({
+final class CareGroupNote {
+  const CareGroupNote({
     required this.id,
     required this.title,
     required this.type,
@@ -23,10 +23,10 @@ final class HouseholdNote {
   final bool? sensitive;
   final DateTime? createdAt;
 
-  static HouseholdNote fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> d) {
+  static CareGroupNote fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> d) {
     final data = d.data();
     final created = data["createdAt"];
-    return HouseholdNote(
+    return CareGroupNote(
       id: d.id,
       title: (data["title"] as String?)?.trim() ?? "",
       type: (data["type"] as String?)?.trim() ?? "general",

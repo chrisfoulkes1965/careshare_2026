@@ -12,11 +12,15 @@ import "../features/home/view/home_screen.dart";
 import "../features/contacts/view/contacts_screen.dart";
 import "../features/invitations/view/invitations_screen.dart";
 import "../features/journal/view/journal_screen.dart";
+import "../features/medications/view/medication_dose_confirm_screen.dart";
 import "../features/medications/view/medications_screen.dart";
 import "../features/meetings/view/meetings_screen.dart";
 import "../features/members/view/members_screen.dart";
 import "../features/notes/view/notes_screen.dart";
 import "../features/tasks/view/tasks_screen.dart";
+import "../features/user/view/user_settings_care_groups_screen.dart";
+import "../features/user/view/user_settings_profile_screen.dart";
+import "../features/user/view/user_settings_security_screen.dart";
 import "../features/profile/profile_cubit.dart";
 import "../features/profile/profile_state.dart";
 import "../features/setup_wizard/view/setup_wizard_view.dart";
@@ -38,6 +42,10 @@ abstract final class AppRouteNames {
   static const meetings = "meetings";
   static const medications = "medications";
   static const selectCareGroup = "selectCareGroup";
+  static const medicationDose = "medicationDose";
+  static const userSettingsProfile = "userSettingsProfile";
+  static const userSettingsCareGroups = "userSettingsCareGroups";
+  static const userSettingsSecurity = "userSettingsSecurity";
 }
 
 abstract final class AppRouter {
@@ -68,7 +76,8 @@ abstract final class AppRouter {
           return "/home";
         }
 
-        if (profileState is ProfileLoading || profileState is ProfileAnonymous) {
+        if (profileState is ProfileLoading ||
+            profileState is ProfileAnonymous) {
           return loc == "/loading" ? null : "/loading";
         }
 
@@ -90,7 +99,8 @@ abstract final class AppRouter {
             return "/select-care-group";
           }
 
-          if (state.uri.path == "/select-care-group" && state.uri.queryParameters["picker"] != "1") {
+          if (state.uri.path == "/select-care-group" &&
+              state.uri.queryParameters["picker"] != "1") {
             return "/home";
           }
 
@@ -144,7 +154,8 @@ abstract final class AppRouter {
           path: "/coming-soon",
           name: AppRouteNames.comingSoon,
           builder: (context, state) {
-            final title = state.extra is String ? state.extra! as String : "Feature";
+            final title =
+                state.extra is String ? state.extra! as String : "Feature";
             return ComingSoonScreen(title: title);
           },
         ),
@@ -189,9 +200,29 @@ abstract final class AppRouter {
           builder: (context, state) => const MedicationsScreen(),
         ),
         GoRoute(
+          path: "/medication-dose",
+          name: AppRouteNames.medicationDose,
+          builder: (context, state) => const MedicationDoseConfirmScreen(),
+        ),
+        GoRoute(
           path: "/members",
           name: AppRouteNames.members,
           builder: (context, state) => const MembersScreen(),
+        ),
+        GoRoute(
+          path: "/user-settings/profile",
+          name: AppRouteNames.userSettingsProfile,
+          builder: (context, state) => const UserSettingsProfileScreen(),
+        ),
+        GoRoute(
+          path: "/user-settings/care-groups",
+          name: AppRouteNames.userSettingsCareGroups,
+          builder: (context, state) => const UserSettingsCareGroupsScreen(),
+        ),
+        GoRoute(
+          path: "/user-settings/security",
+          name: AppRouteNames.userSettingsSecurity,
+          builder: (context, state) => const UserSettingsSecurityScreen(),
         ),
       ],
     );

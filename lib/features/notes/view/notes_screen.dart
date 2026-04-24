@@ -1,4 +1,4 @@
-import "package:flutter/material.dart";
+﻿import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
 
@@ -22,8 +22,8 @@ class NotesScreen extends StatelessWidget {
             body: Center(child: Text("Loading your profile…")),
           );
         }
-        final hid = state.profile.activeHouseholdId;
-        if (hid == null || hid.isEmpty) {
+        final cg = state.profile.activeCareGroupId;
+        if (cg == null || cg.isEmpty) {
           return Scaffold(
             appBar: AppBar(title: const Text("Notes")),
             body: const Center(
@@ -38,10 +38,10 @@ class NotesScreen extends StatelessWidget {
           );
         }
         return BlocProvider(
-          key: ObjectKey(hid),
+          key: ObjectKey(cg),
           create: (context) => NotesCubit(
             repository: context.read<NotesRepository>(),
-            householdId: hid,
+            careGroupId: cg,
           )..subscribe(),
           child: const _NotesView(),
         );
@@ -144,7 +144,7 @@ class _NotesView extends StatelessWidget {
     return "${d.year}-${d.month.toString().padLeft(2, "0")}-${d.day.toString().padLeft(2, "0")}";
   }
 
-  Future<void> _openEditor(BuildContext context, HouseholdNote? existing) async {
+  Future<void> _openEditor(BuildContext context, CareGroupNote? existing) async {
     final isNew = existing == null;
     final titleC = TextEditingController(text: existing?.title ?? "");
     final bodyC = TextEditingController(text: existing?.body ?? "");

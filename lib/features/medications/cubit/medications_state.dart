@@ -1,4 +1,4 @@
-import "package:equatable/equatable.dart";
+﻿import "package:equatable/equatable.dart";
 
 import "../models/household_medication.dart";
 
@@ -24,7 +24,7 @@ final class MedicationsEmpty extends MedicationsState {
 final class MedicationsDisplay extends MedicationsState {
   const MedicationsDisplay({required this.list});
 
-  final List<HouseholdMedication> list;
+  final List<CareGroupMedication> list;
 
   @override
   List<Object?> get props => [list];

@@ -1,8 +1,8 @@
 import "package:cloud_firestore/cloud_firestore.dart";
 
-/// Maps `households/{hid}/tasks/{taskId}` (rules require title, status, createdBy, createdAt).
-final class HouseholdTask {
-  const HouseholdTask({
+/// Maps `careGroups/{hid}/tasks/{taskId}` (rules require title, status, createdBy, createdAt).
+final class CareGroupTask {
+  const CareGroupTask({
     required this.id,
     required this.title,
     required this.status,
@@ -29,11 +29,11 @@ final class HouseholdTask {
     return v.map((e) => e.toString()).toList(growable: false);
   }
 
-  static HouseholdTask fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> d) {
+  static CareGroupTask fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> d) {
     final data = d.data();
     final created = data["createdAt"];
     final due = data["dueAt"];
-    return HouseholdTask(
+    return CareGroupTask(
       id: d.id,
       title: (data["title"] as String?)?.trim() ?? "",
       status: (data["status"] as String?)?.trim() ?? "open",

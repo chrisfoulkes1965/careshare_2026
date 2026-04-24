@@ -1,4 +1,4 @@
-import "package:flutter/material.dart";
+﻿import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
 
@@ -24,8 +24,8 @@ class MeetingsScreen extends StatelessWidget {
             body: Center(child: Text("Loading your profile…")),
           );
         }
-        final hid = state.profile.activeHouseholdId;
-        if (hid == null || hid.isEmpty) {
+        final cg = state.profile.activeCareGroupId;
+        if (cg == null || cg.isEmpty) {
           return Scaffold(
             appBar: AppBar(title: const Text("Meetings")),
             body: const Center(
@@ -40,10 +40,10 @@ class MeetingsScreen extends StatelessWidget {
           );
         }
         return BlocProvider(
-          key: ObjectKey(hid),
+          key: ObjectKey(cg),
           create: (context) => MeetingsCubit(
             repository: context.read<MeetingsRepository>(),
-            householdId: hid,
+            careGroupId: cg,
           )..subscribe(),
           child: const _MeetingsView(),
         );
@@ -191,7 +191,7 @@ class _MeetingsBody extends StatelessWidget {
 
 Future<void> _showMeetingSheet(
   BuildContext context,
-  HouseholdMeeting? existing,
+  CareGroupMeeting? existing,
 ) async {
   await showModalBottomSheet<void>(
     context: context,
@@ -213,7 +213,7 @@ Future<void> _showMeetingSheet(
 class _MeetingFormSheet extends StatefulWidget {
   const _MeetingFormSheet({this.existing});
 
-  final HouseholdMeeting? existing;
+  final CareGroupMeeting? existing;
 
   @override
   State<_MeetingFormSheet> createState() => _MeetingFormSheetState();

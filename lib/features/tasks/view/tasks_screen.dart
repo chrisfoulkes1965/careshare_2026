@@ -1,4 +1,4 @@
-import "package:flutter/material.dart";
+﻿import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
 
@@ -24,8 +24,8 @@ class TasksScreen extends StatelessWidget {
             body: Center(child: Text("Loading your profile…")),
           );
         }
-        final hid = state.profile.activeHouseholdId;
-        if (hid == null || hid.isEmpty) {
+        final cg = state.profile.activeCareGroupId;
+        if (cg == null || cg.isEmpty) {
           return Scaffold(
             appBar: AppBar(title: const Text("Tasks")),
             body: const Center(
@@ -39,12 +39,11 @@ class TasksScreen extends StatelessWidget {
             ),
           );
         }
-        final cg = state.profile.activeCareGroupId;
         return BlocProvider(
-          key: ObjectKey(hid),
+          key: ObjectKey(cg),
           create: (context) => TasksCubit(
             repository: context.read<TaskRepository>(),
-            householdId: hid,
+            careGroupId: cg,
           )..subscribe(),
           child: _TasksView(careGroupId: cg),
         );
@@ -176,7 +175,7 @@ class _TasksView extends StatelessWidget {
 
   Widget _taskCard(
     BuildContext context,
-    HouseholdTask t,
+    CareGroupTask t,
     Map<String, String> nameBy,
   ) {
     final self = _subtitleLines(t, nameBy);
@@ -250,7 +249,7 @@ class _TasksView extends StatelessWidget {
     );
   }
 
-  String? _subtitleLines(HouseholdTask t, Map<String, String> nameBy) {
+  String? _subtitleLines(CareGroupTask t, Map<String, String> nameBy) {
     final parts = <String>[];
     if (t.assignedTo != null && t.assignedTo!.isNotEmpty) {
       final n = nameBy[t.assignedTo!];
@@ -295,7 +294,7 @@ class _TasksView extends StatelessWidget {
 
   Future<void> _openEditor(
     BuildContext context,
-    HouseholdTask? task,
+    CareGroupTask? task,
   ) {
     return TaskEditorSheet.show(
       context,

@@ -1,8 +1,8 @@
 import "package:cloud_firestore/cloud_firestore.dart";
 
-/// `households/{hid}/meetings/{id}` — care coordination meetings (agenda, notes).
-final class HouseholdMeeting {
-  const HouseholdMeeting({
+/// `careGroups/{hid}/meetings/{id}` — care coordination meetings (agenda, notes).
+final class CareGroupMeeting {
+  const CareGroupMeeting({
     required this.id,
     required this.title,
     required this.createdBy,
@@ -20,11 +20,11 @@ final class HouseholdMeeting {
   final DateTime? meetingAt;
   final DateTime? createdAt;
 
-  static HouseholdMeeting fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> d) {
+  static CareGroupMeeting fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> d) {
     final data = d.data();
     final meetingAt = data["meetingAt"];
     final created = data["createdAt"];
-    return HouseholdMeeting(
+    return CareGroupMeeting(
       id: d.id,
       title: (data["title"] as String?)?.trim() ?? "Meeting",
       createdBy: (data["createdBy"] as String?) ?? "",

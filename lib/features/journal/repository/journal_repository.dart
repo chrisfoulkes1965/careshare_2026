@@ -10,25 +10,25 @@ class JournalRepository {
 
   bool get isAvailable => _firebaseReady;
 
-  CollectionReference<Map<String, dynamic>> _journal(String householdId) {
+  CollectionReference<Map<String, dynamic>> _journal(String careGroupId) {
     return FirebaseFirestore.instance
-        .collection("households")
-        .doc(householdId)
+        .collection("careGroups")
+        .doc(careGroupId)
         .collection("journalEntries");
   }
 
-  Stream<List<JournalEntry>> watchJournal(String householdId) {
+  Stream<List<JournalEntry>> watchJournal(String careGroupId) {
     if (!_firebaseReady) {
       return const Stream.empty();
     }
-    return _journal(householdId)
+    return _journal(careGroupId)
         .orderBy("createdAt", descending: true)
         .snapshots()
         .map((s) => s.docs.map(JournalEntry.fromDoc).toList());
   }
 
   Future<void> addEntry({
-    required String householdId,
+    required String careGroupId,
     required String title,
     String body = "",
   }) async {
@@ -41,7 +41,7 @@ class JournalRepository {
     if (t.isEmpty) {
       throw ArgumentError("Title is required.");
     }
-    await _journal(householdId).add({
+    await _journal(careGroupId).add({
       "title": t,
       "body": body.trim(),
       "createdBy": uid,
@@ -50,23 +50,23 @@ class JournalRepository {
   }
 
   Future<void> updateEntry({
-    required String householdId,
+    required String careGroupId,
     required String entryId,
     required String title,
     String body = "",
   }) async {
     if (!_firebaseReady) return;
-    await _journal(householdId).doc(entryId).update({
+    await _journal(careGroupId).doc(entryId).update({
       "title": title.trim(),
       "body": body.trim(),
     });
   }
 
   Future<void> deleteEntry({
-    required String householdId,
+    required String careGroupId,
     required String entryId,
   }) async {
     if (!_firebaseReady) return;
-    await _journal(householdId).doc(entryId).delete();
+    await _journal(careGroupId).doc(entryId).delete();
   }
 }

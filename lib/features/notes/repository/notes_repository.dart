@@ -1,4 +1,4 @@
-import "package:cloud_firestore/cloud_firestore.dart";
+﻿import "package:cloud_firestore/cloud_firestore.dart";
 import "package:firebase_auth/firebase_auth.dart";
 
 import "../models/household_note.dart";
@@ -10,25 +10,25 @@ class NotesRepository {
 
   bool get isAvailable => _firebaseReady;
 
-  CollectionReference<Map<String, dynamic>> _notes(String householdId) {
+  CollectionReference<Map<String, dynamic>> _notes(String careGroupId) {
     return FirebaseFirestore.instance
-        .collection("households")
-        .doc(householdId)
+        .collection("careGroups")
+        .doc(careGroupId)
         .collection("notes");
   }
 
-  Stream<List<HouseholdNote>> watchNotes(String householdId) {
+  Stream<List<CareGroupNote>> watchNotes(String careGroupId) {
     if (!_firebaseReady) {
       return const Stream.empty();
     }
-    return _notes(householdId)
+    return _notes(careGroupId)
         .orderBy("createdAt", descending: true)
         .snapshots()
-        .map((s) => s.docs.map(HouseholdNote.fromDoc).toList());
+        .map((s) => s.docs.map(CareGroupNote.fromDoc).toList());
   }
 
   Future<void> addNote({
-    required String householdId,
+    required String careGroupId,
     required String title,
     required String type,
     String body = "",
@@ -53,11 +53,11 @@ class NotesRepository {
     if (legalCategory == "legal") {
       data["category"] = "legal";
     }
-    await _notes(householdId).add(data);
+    await _notes(careGroupId).add(data);
   }
 
   Future<void> updateNote({
-    required String householdId,
+    required String careGroupId,
     required String noteId,
     required String title,
     required String type,
@@ -75,14 +75,14 @@ class NotesRepository {
     } else {
       data["category"] = FieldValue.delete();
     }
-    await _notes(householdId).doc(noteId).update(data);
+    await _notes(careGroupId).doc(noteId).update(data);
   }
 
   Future<void> deleteNote({
-    required String householdId,
+    required String careGroupId,
     required String noteId,
   }) async {
     if (!_firebaseReady) return;
-    await _notes(householdId).doc(noteId).delete();
+    await _notes(careGroupId).doc(noteId).delete();
   }
 }

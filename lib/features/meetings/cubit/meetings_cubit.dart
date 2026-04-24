@@ -1,4 +1,4 @@
-import "dart:async";
+﻿import "dart:async";
 
 import "package:flutter_bloc/flutter_bloc.dart";
 
@@ -9,14 +9,14 @@ import "meetings_state.dart";
 final class MeetingsCubit extends Cubit<MeetingsState> {
   MeetingsCubit({
     required MeetingsRepository repository,
-    required this.householdId,
+    required this.careGroupId,
   })  : _repository = repository,
         super(const MeetingsInitial());
 
   final MeetingsRepository _repository;
-  final String householdId;
+  final String careGroupId;
 
-  StreamSubscription<List<HouseholdMeeting>>? _sub;
+  StreamSubscription<List<CareGroupMeeting>>? _sub;
 
   void subscribe() {
     if (!_repository.isAvailable) {
@@ -25,7 +25,7 @@ final class MeetingsCubit extends Cubit<MeetingsState> {
     }
     emit(const MeetingsLoading());
     unawaited(_sub?.cancel());
-    _sub = _repository.watchMeetings(householdId).listen(
+    _sub = _repository.watchMeetings(careGroupId).listen(
       (list) {
         if (list.isEmpty) {
           emit(const MeetingsEmpty());
@@ -51,7 +51,7 @@ final class MeetingsCubit extends Cubit<MeetingsState> {
     required DateTime meetingAt,
   }) {
     return _repository.addMeeting(
-      householdId: householdId,
+      careGroupId: careGroupId,
       title: title,
       body: body,
       location: location,
@@ -67,7 +67,7 @@ final class MeetingsCubit extends Cubit<MeetingsState> {
     required DateTime meetingAt,
   }) {
     return _repository.updateMeeting(
-      householdId: householdId,
+      careGroupId: careGroupId,
       meetingId: meetingId,
       title: title,
       body: body,
@@ -78,7 +78,7 @@ final class MeetingsCubit extends Cubit<MeetingsState> {
 
   Future<void> deleteMeeting(String meetingId) {
     return _repository.deleteMeeting(
-      householdId: householdId,
+      careGroupId: careGroupId,
       meetingId: meetingId,
     );
   }

@@ -1,3 +1,5 @@
+﻿import "dart:async";
+
 import "package:cloud_firestore/cloud_firestore.dart";
 import "package:file_picker/file_picker.dart";
 import "package:firebase_auth/firebase_auth.dart";
@@ -6,33 +8,74 @@ import "package:firebase_storage/firebase_storage.dart";
 import "../models/household_medication.dart";
 import "../../tasks/repository/platform_file_read_io.dart" if (dart.library.html) "../../tasks/repository/platform_file_read_web.dart" as platform_file_read;
 
+Map<String, dynamic> _scheduleFields({
+  required MedicationScheduleType scheduleType,
+  required List<int> scheduleWeekdays,
+  required List<int> scheduleMonthDays,
+}) {
+  return {
+    "reminderSchedule": scheduleType.name,
+    "reminderWeekdays": scheduleWeekdays,
+    "reminderMonthDays": scheduleMonthDays,
+  };
+}
+
 class MedicationsRepository {
   MedicationsRepository({required bool firebaseReady}) : _firebaseReady = firebaseReady;
 
   final bool _firebaseReady;
 
   static const int _maxBytes = 8 * 1024 * 1024;
+  static const Duration _opTimeout = Duration(minutes: 2);
 
   bool get isAvailable => _firebaseReady;
 
-  CollectionReference<Map<String, dynamic>> _medications(String householdId) {
+  Future<T> _withOpTimeout<T>(Future<T> f) {
+    return f.timeout(
+      _opTimeout,
+      onTimeout: () {
+        throw TimeoutException(
+          "This is taking too long. Check your network, try again without a photo, or use a smaller image.",
+        );
+      },
+    );
+  }
+
+  CollectionReference<Map<String, dynamic>> _medications(String careGroupId) {
     return FirebaseFirestore.instance
-        .collection("households")
-        .doc(householdId)
+        .collection("careGroups")
+        .doc(careGroupId)
         .collection("medications");
   }
 
-  Stream<List<HouseholdMedication>> watchMedications(String householdId) {
+  Stream<List<CareGroupMedication>> watchMedications(String careGroupId) {
     if (!_firebaseReady) {
       return const Stream.empty();
     }
-    return _medications(householdId).snapshots().map(
+    return _medications(careGroupId).snapshots().map(
           (s) {
-            final list = s.docs.map(HouseholdMedication.fromDoc).toList();
+            final list = s.docs.map(CareGroupMedication.fromDoc).toList();
             list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
             return list;
           },
         );
+  }
+
+  Future<List<CareGroupMedication>> fetchMedicationsByIds({
+    required String careGroupId,
+    required List<String> medicationIds,
+  }) async {
+    if (!_firebaseReady) {
+      return const [];
+    }
+    final out = <CareGroupMedication>[];
+    for (final id in medicationIds) {
+      final s = await _medications(careGroupId).doc(id).get();
+      if (s.exists && s.data() != null) {
+        out.add(CareGroupMedication.fromMap(s.id, s.data()!));
+      }
+    }
+    return out;
   }
 
   String _safeFileName(String name) {
@@ -42,7 +85,7 @@ class MedicationsRepository {
   }
 
   Future<String> _uploadPhotoIfAny({
-    required String householdId,
+    required String careGroupId,
     required String medicationId,
     PlatformFile? file,
   }) async {
@@ -60,24 +103,58 @@ class MedicationsRepository {
     final stamp = DateTime.now().millisecondsSinceEpoch;
     final ref = FirebaseStorage.instance
         .ref()
-        .child("households/$householdId/medication_photos/$medicationId/${stamp}_$name");
+        .child("careGroups/$careGroupId/medication_photos/$medicationId/${stamp}_$name");
     await ref.putData(bytes);
     return ref.getDownloadURL();
   }
 
   Future<void> addMedication({
-    required String householdId,
+    required String careGroupId,
     required String name,
     String dosage = "",
     String instructions = "",
     String notes = "",
     bool reminderEnabled = false,
     List<MedicationReminderTime> reminderTimes = const [],
+    MedicationScheduleType scheduleType = MedicationScheduleType.daily,
+    List<int> scheduleWeekdays = const [],
+    List<int> scheduleMonthDays = const [],
+    int? quantityOnHand,
+    PlatformFile? image,
+  }) {
+    if (!_firebaseReady) {
+      return Future.error(StateError("Firebase is not available."));
+    }
+    return _withOpTimeout(_addMedicationWork(
+      careGroupId: careGroupId,
+      name: name,
+      dosage: dosage,
+      instructions: instructions,
+      notes: notes,
+      reminderEnabled: reminderEnabled,
+      reminderTimes: reminderTimes,
+      scheduleType: scheduleType,
+      scheduleWeekdays: scheduleWeekdays,
+      scheduleMonthDays: scheduleMonthDays,
+      quantityOnHand: quantityOnHand,
+      image: image,
+    ));
+  }
+
+  Future<void> _addMedicationWork({
+    required String careGroupId,
+    required String name,
+    String dosage = "",
+    String instructions = "",
+    String notes = "",
+    bool reminderEnabled = false,
+    List<MedicationReminderTime> reminderTimes = const [],
+    MedicationScheduleType scheduleType = MedicationScheduleType.daily,
+    List<int> scheduleWeekdays = const [],
+    List<int> scheduleMonthDays = const [],
+    int? quantityOnHand,
     PlatformFile? image,
   }) async {
-    if (!_firebaseReady) {
-      return;
-    }
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
       throw StateError("Not signed in.");
@@ -93,14 +170,22 @@ class MedicationsRepository {
       "notes": notes.trim(),
       "reminderEnabled": reminderEnabled,
       "reminderTimes": reminderTimes.map((e) => e.toMap()).toList(),
+      ..._scheduleFields(
+        scheduleType: scheduleType,
+        scheduleWeekdays: scheduleWeekdays,
+        scheduleMonthDays: scheduleMonthDays,
+      ),
       "createdBy": uid,
       "createdAt": FieldValue.serverTimestamp(),
     };
-    final ref = await _medications(householdId).add(data);
+    if (quantityOnHand != null) {
+      data["quantityOnHand"] = quantityOnHand.clamp(0, 0x3fffffff);
+    }
+    final ref = await _medications(careGroupId).add(data);
     final id = ref.id;
     if (image != null) {
       final url = await _uploadPhotoIfAny(
-        householdId: householdId,
+        careGroupId: careGroupId,
         medicationId: id,
         file: image,
       );
@@ -113,7 +198,7 @@ class MedicationsRepository {
   }
 
   Future<void> updateMedication({
-    required String householdId,
+    required String careGroupId,
     required String medicationId,
     required String name,
     String dosage = "",
@@ -121,12 +206,53 @@ class MedicationsRepository {
     String notes = "",
     bool reminderEnabled = false,
     List<MedicationReminderTime> reminderTimes = const [],
+    MedicationScheduleType scheduleType = MedicationScheduleType.daily,
+    List<int> scheduleWeekdays = const [],
+    List<int> scheduleMonthDays = const [],
+    int? quantityOnHand,
+    bool clearQuantity = false,
+    bool clearPhoto = false,
+    PlatformFile? newImage,
+  }) {
+    if (!_firebaseReady) {
+      return Future.error(StateError("Firebase is not available."));
+    }
+    return _withOpTimeout(_updateMedicationWork(
+      careGroupId: careGroupId,
+      medicationId: medicationId,
+      name: name,
+      dosage: dosage,
+      instructions: instructions,
+      notes: notes,
+      reminderEnabled: reminderEnabled,
+      reminderTimes: reminderTimes,
+      scheduleType: scheduleType,
+      scheduleWeekdays: scheduleWeekdays,
+      scheduleMonthDays: scheduleMonthDays,
+      quantityOnHand: quantityOnHand,
+      clearQuantity: clearQuantity,
+      clearPhoto: clearPhoto,
+      newImage: newImage,
+    ));
+  }
+
+  Future<void> _updateMedicationWork({
+    required String careGroupId,
+    required String medicationId,
+    required String name,
+    String dosage = "",
+    String instructions = "",
+    String notes = "",
+    bool reminderEnabled = false,
+    List<MedicationReminderTime> reminderTimes = const [],
+    MedicationScheduleType scheduleType = MedicationScheduleType.daily,
+    List<int> scheduleWeekdays = const [],
+    List<int> scheduleMonthDays = const [],
+    int? quantityOnHand,
+    bool clearQuantity = false,
     bool clearPhoto = false,
     PlatformFile? newImage,
   }) async {
-    if (!_firebaseReady) {
-      return;
-    }
     final t = name.trim();
     if (t.isEmpty) {
       throw ArgumentError("Medication name is required.");
@@ -138,30 +264,73 @@ class MedicationsRepository {
       "notes": notes.trim(),
       "reminderEnabled": reminderEnabled,
       "reminderTimes": reminderTimes.map((e) => e.toMap()).toList(),
+      ..._scheduleFields(
+        scheduleType: scheduleType,
+        scheduleWeekdays: scheduleWeekdays,
+        scheduleMonthDays: scheduleMonthDays,
+      ),
     };
     if (clearPhoto) {
       patch["photoUrl"] = FieldValue.delete();
     }
-    await _medications(householdId).doc(medicationId).update(patch);
+    if (clearQuantity) {
+      patch["quantityOnHand"] = FieldValue.delete();
+    } else if (quantityOnHand != null) {
+      patch["quantityOnHand"] = quantityOnHand.clamp(0, 0x3fffffff);
+    }
+    await _medications(careGroupId).doc(medicationId).update(patch);
     if (newImage != null) {
       final url = await _uploadPhotoIfAny(
-        householdId: householdId,
+        careGroupId: careGroupId,
         medicationId: medicationId,
         file: newImage,
       );
       if (url.isNotEmpty) {
-        await _medications(householdId).doc(medicationId).update({"photoUrl": url});
+        await _medications(careGroupId).doc(medicationId).update({"photoUrl": url});
       }
     }
   }
 
-  Future<void> deleteMedication({
-    required String householdId,
-    required String medicationId,
-  }) async {
+  /// One dose from each listed medication: decrements by 1, materializing implicit 28d stock.
+  Future<void> applyDoseDecrements({
+    required String careGroupId,
+    required Set<String> medicationIds,
+  }) {
     if (!_firebaseReady) {
-      return;
+      return Future.error(StateError("Firebase is not available."));
     }
-    await _medications(householdId).doc(medicationId).delete();
+    return _withOpTimeout(
+      FirebaseFirestore.instance.runTransaction((t) async {
+        for (final id in medicationIds) {
+          final r = _medications(careGroupId).doc(id);
+          final s = await t.get(r);
+          if (!s.exists) {
+            continue;
+          }
+          final m = CareGroupMedication.fromMap(id, s.data()!);
+          if (!m.reminderEnabled || m.reminderTimes.isEmpty) {
+            continue;
+          }
+          if (!m.hasValidReminderSchedule) {
+            continue;
+          }
+          final start = m.effectiveDosesInHand;
+          final next = (start - 1).clamp(0, 0x3fffffff);
+          t.update(r, {"quantityOnHand": next});
+        }
+      }),
+    );
+  }
+
+  Future<void> deleteMedication({
+    required String careGroupId,
+    required String medicationId,
+  }) {
+    if (!_firebaseReady) {
+      return Future.error(StateError("Firebase is not available."));
+    }
+    return _withOpTimeout(
+      _medications(careGroupId).doc(medicationId).delete(),
+    );
   }
 }

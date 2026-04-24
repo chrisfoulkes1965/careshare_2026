@@ -41,8 +41,8 @@ final class ProfileCubit extends Cubit<ProfileState> {
     try {
       await _userRepository.setActiveCareGroup(
         uid: user.uid,
-        householdId: option.householdId,
         careGroupId: option.careGroupId,
+        householdId: option.householdId,
       );
       await _load(user);
     } catch (e) {
@@ -128,11 +128,11 @@ final class ProfileCubit extends Cubit<ProfileState> {
 
     if (options.length == 1) {
       final only = options.first;
-      if (p.activeHouseholdId != only.householdId || p.activeCareGroupId != only.careGroupId) {
+      if (p.activeCareGroupId != only.careGroupId || p.activeHouseholdId != only.householdId) {
         await _userRepository.setActiveCareGroup(
           uid: user.uid,
-          householdId: only.householdId,
           careGroupId: only.careGroupId,
+          householdId: only.householdId,
         );
         final again = await _userRepository.fetchProfile(user.uid);
         if (again != null) {
@@ -141,11 +141,11 @@ final class ProfileCubit extends Cubit<ProfileState> {
       }
     }
 
-    final active = p.activeHouseholdId;
+    final active = p.activeCareGroupId;
     final requires = options.length > 1 &&
         (active == null ||
             active.isEmpty ||
-            !options.any((o) => o.householdId == active));
+            !options.any((o) => o.careGroupId == active));
 
     emit(
       ProfileReady(

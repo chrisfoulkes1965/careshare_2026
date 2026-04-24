@@ -2,6 +2,7 @@ import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
 
+import "../../../core/care/role_label.dart";
 import "../../../core/theme/app_colors.dart";
 import "../../auth/bloc/auth_bloc.dart";
 import "../../auth/bloc/auth_state.dart";
@@ -50,17 +51,6 @@ class MembersScreen extends StatelessWidget {
       },
     );
   }
-}
-
-String _roleLabel(String role) {
-  return switch (role) {
-    "principal_carer" => "Principal carer",
-    "carer" => "Carer",
-    "financial_manager" => "Financial",
-    "power_of_attorney" => "Power of attorney",
-    "receives_care" => "Receives care",
-    _ => role.replaceAll("_", " "),
-  };
 }
 
 class _MembersView extends StatelessWidget {
@@ -211,7 +201,7 @@ class _MemberTile extends StatelessWidget {
                       visualDensity: VisualDensity.compact,
                       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                       label: Text(
-                        _roleLabel(r),
+                        careGroupRoleLabel(r),
                         style: theme.textTheme.labelSmall,
                       ),
                     ),

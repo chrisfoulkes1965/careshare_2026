@@ -38,64 +38,69 @@ service cloud.firestore {
         && memberData(careGroupId, uid).roles.hasAny(roles);
     }
 
-    function isCareGroupMember(careGroupId) {
-      return memberExists(careGroupId, request.auth.uid);
+    // True if the user is a member of this care group document OR of its linked
+    // "team" document (see setup: one doc holds members, the other holds household
+    // fields, cross-linked by careGroupId).
+    function isCareGroupMember(careGroupDocId) {
+      return signedIn() && (
+        memberExists(careGroupDocId, request.auth.uid)
+        || (
+          exists(/databases/$(database)/documents/careGroups/$(careGroupDocId))
+          && get(/databases/$(database)/documents/careGroups/$(careGroupDocId)).data.keys().hasAny(['careGroupId'])
+          && memberExists(
+            get(/databases/$(database)/documents/careGroups/$(careGroupDocId)).data.careGroupId,
+            request.auth.uid
+          )
+        )
+      );
     }
 
-    function householdCareGroupId(householdId) {
-      return get(/databases/$(database)/documents/households/$(householdId)).data.careGroupId;
+    // The document id where members/{uid} and roles are stored.
+    function careTeamId(careGroupDocId) {
+      return memberExists(careGroupDocId, request.auth.uid)
+        ? careGroupDocId
+        : (
+            exists(/databases/$(database)/documents/careGroups/$(careGroupDocId))
+            && get(/databases/$(database)/documents/careGroups/$(careGroupDocId)).data.keys().hasAny(['careGroupId'])
+            ? get(/databases/$(database)/documents/careGroups/$(careGroupDocId)).data.careGroupId
+            : careGroupDocId
+          );
     }
 
-    function isHouseholdMember(householdId) {
-      return signedIn()
-        && householdCareGroupId(householdId) != null
-        && isCareGroupMember(householdCareGroupId(householdId));
+    function isPrincipalCarerForCareGroup(careGroupId) {
+      return hasRole(careTeamId(careGroupId), request.auth.uid, 'principal_carer');
     }
 
-    function isPrincipalCarerForHousehold(householdId) {
-      return hasRole(householdCareGroupId(householdId), request.auth.uid, 'principal_carer');
+    function isCarerOrPrincipalForCareGroup(careGroupId) {
+      let team = careTeamId(careGroupId);
+      return hasAnyRole(team, request.auth.uid, ['principal_carer', 'carer']);
     }
 
-    function isCoordinatorForHousehold(householdId) {
-      let cg = householdCareGroupId(householdId);
-      return hasAnyRole(cg, request.auth.uid, [
-        'principal_carer',
-        'carer',
-        'financial_manager',
-        'power_of_attorney',
-      ]);
+    function isFinancialOrPrincipalForCareGroup(careGroupId) {
+      let team = careTeamId(careGroupId);
+      return hasAnyRole(team, request.auth.uid, ['principal_carer', 'financial_manager']);
     }
 
-    function isCarerOrPrincipalForHousehold(householdId) {
-      let cg = householdCareGroupId(householdId);
-      return hasAnyRole(cg, request.auth.uid, ['principal_carer', 'carer']);
-    }
-
-    function isFinancialOrPrincipalForHousehold(householdId) {
-      let cg = householdCareGroupId(householdId);
-      return hasAnyRole(cg, request.auth.uid, ['principal_carer', 'financial_manager']);
-    }
-
-    function isExpenseReaderForHousehold(householdId) {
-      let cg = householdCareGroupId(householdId);
+    function isExpenseReaderForCareGroup(careGroupId) {
+      let team = careTeamId(careGroupId);
       // Conservative default from matrix: plain carers excluded until product confirms.
-      return hasAnyRole(cg, request.auth.uid, [
+      return hasAnyRole(team, request.auth.uid, [
         'principal_carer',
         'financial_manager',
         'power_of_attorney',
       ]);
     }
 
-    function isPrincipalOrPoaForHousehold(householdId) {
-      let cg = householdCareGroupId(householdId);
-      return hasAnyRole(cg, request.auth.uid, ['principal_carer', 'power_of_attorney']);
+    function isPrincipalOrPoaForCareGroup(careGroupId) {
+      let team = careTeamId(careGroupId);
+      return hasAnyRole(team, request.auth.uid, ['principal_carer', 'power_of_attorney']);
     }
 
-    function isReceivesCareOnlyMember(householdId) {
-      let cg = householdCareGroupId(householdId);
-      return memberExists(cg, request.auth.uid)
-        && hasRole(cg, request.auth.uid, 'receives_care')
-        && !hasAnyRole(cg, request.auth.uid, [
+    function isReceivesCareOnlyMember(careGroupId) {
+      let team = careTeamId(careGroupId);
+      return memberExists(team, request.auth.uid)
+        && hasRole(team, request.auth.uid, 'receives_care')
+        && !hasAnyRole(team, request.auth.uid, [
           'principal_carer',
           'carer',
           'financial_manager',
@@ -114,15 +119,15 @@ service cloud.firestore {
         || (note.keys().hasAny(['category']) && note.category == 'legal');
     }
 
-    function canReadMedicationList(householdId) {
-      let cg = householdCareGroupId(householdId);
-      return isCarerOrPrincipalForHousehold(householdId)
-        || hasRole(cg, request.auth.uid, 'power_of_attorney');
+    function canReadMedicationList(careGroupId) {
+      let team = careTeamId(careGroupId);
+      return isCarerOrPrincipalForCareGroup(careGroupId)
+        || hasRole(team, request.auth.uid, 'power_of_attorney');
     }
 
-    function canAuthorHouseholdNotes(householdId) {
-      let cg = householdCareGroupId(householdId);
-      return hasAnyRole(cg, request.auth.uid, [
+    function canAuthorCareGroupNotes(careGroupId) {
+      let team = careTeamId(careGroupId);
+      return hasAnyRole(team, request.auth.uid, [
         'principal_carer',
         'carer',
         'power_of_attorney',
@@ -189,7 +194,7 @@ service cloud.firestore {
           'status',
           'createdAt',
         ])
-        && hasRole(request.resource.data.careGroupId, request.auth.uid, 'principal_carer')
+        && hasRole(careTeamId(request.resource.data.careGroupId), request.auth.uid, 'principal_carer')
         && request.resource.data.invitedBy == request.auth.uid
         && request.resource.data.status == 'pending';
 
@@ -201,13 +206,13 @@ service cloud.firestore {
         )
         || (
           resource.data.keys().hasAny(['careGroupId'])
-          && hasRole(resource.data.careGroupId, request.auth.uid, 'principal_carer')
+          && hasRole(careTeamId(resource.data.careGroupId), request.auth.uid, 'principal_carer')
         )
       );
 
       allow delete: if signedIn()
         && resource.data.keys().hasAny(['careGroupId'])
-        && hasRole(resource.data.careGroupId, request.auth.uid, 'principal_carer');
+        && hasRole(careTeamId(resource.data.careGroupId), request.auth.uid, 'principal_carer');
     }
 
     match /carePathways/{pathwayId} {
@@ -230,20 +235,6 @@ service cloud.firestore {
         && resource.data.createdBy == request.auth.uid;
     }
 
-    match /careGroups/{careGroupId} {
-      allow read: if isCareGroupMember(careGroupId);
-
-      allow create: if signedIn()
-        && request.resource.data.keys().hasAll(['householdId', 'name', 'createdBy', 'createdAt'])
-        && request.resource.data.createdBy == request.auth.uid;
-
-      allow update: if signedIn()
-        && hasRole(careGroupId, request.auth.uid, 'principal_carer')
-        && !diffKeys().hasAny(['householdId']);
-
-      allow delete: if false;
-    }
-
     match /careGroups/{careGroupId}/members/{userId} {
       allow read: if isCareGroupMember(careGroupId);
 
@@ -252,7 +243,7 @@ service cloud.firestore {
           isSelf(userId)
           && request.resource.data.keys().hasAll(['roles', 'displayName', 'joinedAt', 'kudosScore'])
         )
-        || hasRole(careGroupId, request.auth.uid, 'principal_carer')
+        || hasRole(careTeamId(careGroupId), request.auth.uid, 'principal_carer')
       );
 
       allow update: if signedIn()
@@ -264,168 +255,174 @@ service cloud.firestore {
             && diffKeys().hasOnly(['messagingToken', 'simpleMode', 'displayName', 'photoUrl'])
           )
           || (
-            hasRole(careGroupId, request.auth.uid, 'principal_carer')
+            hasRole(careTeamId(careGroupId), request.auth.uid, 'principal_carer')
             && !diffKeys().hasAny(['joinedAt'])
           )
         );
 
       allow delete: if signedIn()
-        && hasRole(careGroupId, request.auth.uid, 'principal_carer')
+        && hasRole(careTeamId(careGroupId), request.auth.uid, 'principal_carer')
         && !isSelf(userId);
     }
 
-    // Recommended chat location (not in brief schema; adjust if you nest under households).
+    // Recommended chat location (not in brief schema; adjust if you nest under careGroups).
     match /careGroups/{careGroupId}/messages/{messageId} {
       allow read: if signedIn()
         && isCareGroupMember(careGroupId)
-        && !isReceivesCareOnlyMember(
-          get(/databases/$(database)/documents/careGroups/$(careGroupId)).data.householdId
-        );
+        && !isReceivesCareOnlyMember(careGroupId);
 
       allow create: if signedIn()
         && isCareGroupMember(careGroupId)
-        && !isReceivesCareOnlyMember(
-          get(/databases/$(database)/documents/careGroups/$(careGroupId)).data.householdId
-        )
+        && !isReceivesCareOnlyMember(careGroupId)
         && request.resource.data.keys().hasAll(['senderId', 'createdAt', 'body'])
         && request.resource.data.senderId == request.auth.uid;
 
       allow update, delete: if false;
     }
 
-    match /households/{householdId} {
-      allow read: if isHouseholdMember(householdId);
+    match /careGroups/{careGroupId} {
+      allow read: if isCareGroupMember(careGroupId);
 
-      allow create: if signedIn()
-        && request.resource.data.keys().hasAll(['name', 'careGroupId', 'recipientIds', 'pathwayIds', 'address', 'addressType', 'createdBy', 'createdAt'])
-        && request.resource.data.createdBy == request.auth.uid
-        && isCareGroupMember(request.resource.data.careGroupId);
+      allow create: if signedIn() && (
+        (
+          request.resource.data.keys().hasAll(['careGroupId', 'name', 'createdBy', 'createdAt'])
+          && request.resource.data.createdBy == request.auth.uid
+        )
+        || (
+          request.resource.data.keys().hasAll(['name', 'careGroupId', 'recipientIds', 'pathwayIds', 'address', 'addressType', 'createdBy', 'createdAt'])
+          && request.resource.data.createdBy == request.auth.uid
+          && isCareGroupMember(request.resource.data.careGroupId)
+        )
+      );
 
       allow update: if signedIn()
-        && isPrincipalCarerForHousehold(householdId)
+        && isPrincipalCarerForCareGroup(careGroupId)
         && request.resource.data.careGroupId == resource.data.careGroupId;
 
       allow delete: if false;
 
       match /tasks/{taskId} {
-        allow read: if isHouseholdMember(householdId)
+        allow read: if isCareGroupMember(careGroupId)
           && (
-            !isReceivesCareOnlyMember(householdId)
+            !isReceivesCareOnlyMember(careGroupId)
             || canReadTaskAsRecipientUser(resource.data)
           );
 
-        allow create: if isHouseholdMember(householdId)
-          && isCarerOrPrincipalForHousehold(householdId)
+        allow create: if isCareGroupMember(careGroupId)
+          && isCarerOrPrincipalForCareGroup(careGroupId)
           && request.resource.data.keys().hasAll(['title', 'status', 'createdBy', 'createdAt'])
           && request.resource.data.createdBy == request.auth.uid;
 
-        allow update: if isHouseholdMember(householdId)
-          && isCarerOrPrincipalForHousehold(householdId)
+        allow update: if isCareGroupMember(careGroupId)
+          && isCarerOrPrincipalForCareGroup(careGroupId)
           && request.resource.data.createdBy == resource.data.createdBy;
 
-        allow delete: if isPrincipalCarerForHousehold(householdId);
+        allow delete: if isPrincipalCarerForCareGroup(careGroupId);
       }
 
       match /notes/{noteId} {
-        allow read: if isHouseholdMember(householdId)
+        allow read: if isCareGroupMember(careGroupId)
           && (
             !noteRequiresPrincipalOrPoa(resource.data)
-            || isPrincipalOrPoaForHousehold(householdId)
+            || isPrincipalOrPoaForCareGroup(careGroupId)
           )
           && (
-            !isReceivesCareOnlyMember(householdId)
+            !isReceivesCareOnlyMember(careGroupId)
             || !noteRequiresPrincipalOrPoa(resource.data)
           );
 
-        allow create: if isHouseholdMember(householdId)
-          && canAuthorHouseholdNotes(householdId)
+        allow create: if isCareGroupMember(careGroupId)
+          && canAuthorCareGroupNotes(careGroupId)
           && request.resource.data.keys().hasAll(['title', 'type', 'createdBy', 'createdAt'])
           && request.resource.data.createdBy == request.auth.uid;
 
-        allow update: if isHouseholdMember(householdId)
-          && canAuthorHouseholdNotes(householdId);
+        allow update: if isCareGroupMember(careGroupId)
+          && canAuthorCareGroupNotes(careGroupId);
 
-        allow delete: if isPrincipalOrPoaForHousehold(householdId);
+        allow delete: if isPrincipalOrPoaForCareGroup(careGroupId);
       }
 
       match /journalEntries/{entryId} {
-        allow read: if isHouseholdMember(householdId)
-          && !isReceivesCareOnlyMember(householdId);
+        allow read: if isCareGroupMember(careGroupId)
+          && !isReceivesCareOnlyMember(careGroupId);
 
-        allow create: if isHouseholdMember(householdId)
-          && isCarerOrPrincipalForHousehold(householdId);
+        allow create: if isCareGroupMember(careGroupId)
+          && isCarerOrPrincipalForCareGroup(careGroupId);
 
-        allow update: if isHouseholdMember(householdId)
-          && isCarerOrPrincipalForHousehold(householdId);
+        allow update: if isCareGroupMember(careGroupId)
+          && isCarerOrPrincipalForCareGroup(careGroupId);
 
-        allow delete: if isPrincipalCarerForHousehold(householdId);
+        allow delete: if isPrincipalCarerForCareGroup(careGroupId);
       }
 
       match /medications/{medicationId} {
-        allow read: if isHouseholdMember(householdId) && canReadMedicationList(householdId);
+        allow read: if isCareGroupMember(careGroupId) && canReadMedicationList(careGroupId);
 
-        allow create, update, delete: if isPrincipalOrPoaForHousehold(householdId);
+        allow create: if isPrincipalOrPoaForCareGroup(careGroupId);
+        // Carers may log doses / inventory; principal+POA retain full control.
+        allow update: if isCareGroupMember(careGroupId) && isCarerOrPrincipalForCareGroup(careGroupId);
+        allow delete: if isPrincipalOrPoaForCareGroup(careGroupId);
       }
 
       match /expenses/{expenseId} {
-        allow read: if isHouseholdMember(householdId) && isExpenseReaderForHousehold(householdId);
+        allow read: if isCareGroupMember(careGroupId) && isExpenseReaderForCareGroup(careGroupId);
 
-        allow create: if isHouseholdMember(householdId)
-          && isFinancialOrPrincipalForHousehold(householdId);
+        allow create: if isCareGroupMember(careGroupId)
+          && isFinancialOrPrincipalForCareGroup(careGroupId);
 
-        allow update, delete: if isHouseholdMember(householdId)
-          && isFinancialOrPrincipalForHousehold(householdId);
+        allow update, delete: if isCareGroupMember(careGroupId)
+          && isFinancialOrPrincipalForCareGroup(careGroupId);
       }
 
       match /meetings/{meetingId} {
-        allow read: if isHouseholdMember(householdId) && !isReceivesCareOnlyMember(householdId);
+        allow read: if isCareGroupMember(careGroupId) && !isReceivesCareOnlyMember(careGroupId);
 
-        allow create, update: if isHouseholdMember(householdId)
-          && isCarerOrPrincipalForHousehold(householdId);
+        allow create, update: if isCareGroupMember(careGroupId)
+          && isCarerOrPrincipalForCareGroup(careGroupId);
 
-        allow delete: if isPrincipalCarerForHousehold(householdId);
+        allow delete: if isPrincipalCarerForCareGroup(careGroupId);
       }
 
       match /documents/{documentId} {
-        allow read: if isHouseholdMember(householdId) && (
+        allow read: if isCareGroupMember(careGroupId) && (
           !resource.data.keys().hasAny(['category'])
           || resource.data.category in ['medical', 'other']
           || (
             resource.data.category == 'legal'
-            && isPrincipalOrPoaForHousehold(householdId)
+            && isPrincipalOrPoaForCareGroup(careGroupId)
           )
           || (
             resource.data.category == 'financial'
             && (
-              isPrincipalOrPoaForHousehold(householdId)
-              || hasRole(householdCareGroupId(householdId), request.auth.uid, 'financial_manager')
+              isPrincipalOrPoaForCareGroup(careGroupId)
+              || hasRole(careTeamId(careGroupId), request.auth.uid, 'financial_manager')
             )
           )
         );
 
-        allow create: if isHouseholdMember(householdId)
+        allow create: if isCareGroupMember(careGroupId)
           && (
-            isPrincipalOrPoaForHousehold(householdId)
+            isPrincipalOrPoaForCareGroup(careGroupId)
             || (
-              isCarerOrPrincipalForHousehold(householdId)
+              isCarerOrPrincipalForCareGroup(careGroupId)
               && request.resource.data.keys().hasAny(['category'])
               && request.resource.data.category in ['medical', 'other']
             )
           );
 
-        allow update, delete: if isHouseholdMember(householdId)
-          && isPrincipalOrPoaForHousehold(householdId);
+        allow update, delete: if isCareGroupMember(careGroupId)
+          && isPrincipalOrPoaForCareGroup(careGroupId);
       }
 
       match /contacts/{contactId} {
-        allow read: if isHouseholdMember(householdId);
+        allow read: if isCareGroupMember(careGroupId);
 
-        allow create, update, delete: if isHouseholdMember(householdId)
-          && isCarerOrPrincipalForHousehold(householdId);
+        allow create, update, delete: if isCareGroupMember(careGroupId)
+          && isCarerOrPrincipalForCareGroup(careGroupId);
       }
 
       match /checkins/{checkinId} {
-        allow read: if isHouseholdMember(householdId)
+        allow read: if isCareGroupMember(careGroupId)
           && (
             (
               resource.data.keys().hasAny(['private'])
@@ -435,17 +432,17 @@ service cloud.firestore {
             )
             || (
               (!resource.data.keys().hasAny(['private']) || resource.data.private == false)
-              && !isReceivesCareOnlyMember(householdId)
+              && !isReceivesCareOnlyMember(careGroupId)
             )
             || (
               (!resource.data.keys().hasAny(['private']) || resource.data.private == false)
-              && isReceivesCareOnlyMember(householdId)
+              && isReceivesCareOnlyMember(careGroupId)
               && resource.data.keys().hasAny(['type'])
               && resource.data.type == 'recipient'
             )
           );
 
-        allow create: if isHouseholdMember(householdId)
+        allow create: if isCareGroupMember(careGroupId)
           && request.resource.data.keys().hasAll(['type', 'subjectId', 'score', 'createdAt'])
           && request.resource.data.subjectId == request.auth.uid;
 
@@ -454,7 +451,7 @@ service cloud.firestore {
 
       // Append-only audit trail (POA-sensitive actions). Prefer Cloud Function creates.
       match /auditLogs/{logId} {
-        allow read: if isHouseholdMember(householdId) && isPrincipalOrPoaForHousehold(householdId);
+        allow read: if isCareGroupMember(careGroupId) && isPrincipalOrPoaForCareGroup(careGroupId);
         allow create: if signedIn()
           && request.resource.data.keys().hasAll(['actorId', 'action', 'createdAt'])
           && request.resource.data.actorId == request.auth.uid;
@@ -463,7 +460,7 @@ service cloud.firestore {
 
       // Tracking / telemetry — client writes off; principal/POA may read. Prefer Fn ingestion.
       match /tracking/{path=**} {
-        allow read: if isHouseholdMember(householdId) && isPrincipalOrPoaForHousehold(householdId);
+        allow read: if isCareGroupMember(careGroupId) && isPrincipalOrPoaForCareGroup(careGroupId);
         allow write: if false;
       }
     }

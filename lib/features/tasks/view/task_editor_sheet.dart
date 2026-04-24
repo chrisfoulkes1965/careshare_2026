@@ -1,4 +1,4 @@
-import "dart:async";
+﻿import "dart:async";
 
 import "package:file_picker/file_picker.dart";
 import "package:flutter/material.dart";
@@ -21,17 +21,17 @@ class TaskEditorSheet extends StatefulWidget {
   });
 
   final String? careGroupId;
-  final HouseholdTask? existing;
+  final CareGroupTask? existing;
 
   static Future<void> show(
     BuildContext context, {
     required String? careGroupId,
-    HouseholdTask? existing,
+    CareGroupTask? existing,
   }) {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      useSafeArea: true,
+      useSafeArea: false,
       showDragHandle: true,
       builder: (ctx) => TaskEditorSheet(
         careGroupId: careGroupId,
@@ -246,13 +246,19 @@ class _TaskEditorSheetState extends State<TaskEditorSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final bottom = MediaQuery.viewInsetsOf(context).bottom;
-    return Padding(
-      padding: EdgeInsets.only(bottom: bottom),
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
-        shrinkWrap: true,
-        children: [
+    final viewInsets = MediaQuery.viewInsetsOf(context);
+    return SafeArea(
+      top: false,
+      left: true,
+      right: true,
+      bottom: true,
+      maintainBottomViewPadding: true,
+      child: Padding(
+        padding: EdgeInsets.only(bottom: viewInsets.bottom),
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+          shrinkWrap: true,
+          children: [
           Text(
             _isEdit ? "Edit task" : "New task",
             style: Theme.of(context).textTheme.titleLarge,
@@ -380,6 +386,7 @@ class _TaskEditorSheetState extends State<TaskEditorSheet> {
                 : Text(_isEdit ? "Save" : "Create task"),
           ),
         ],
+        ),
       ),
     );
   }

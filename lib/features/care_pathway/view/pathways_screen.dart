@@ -18,8 +18,8 @@ class PathwaysScreen extends StatelessWidget {
             body: Center(child: Text("Loading your profile…")),
           );
         }
-        final hid = state.profile.activeHouseholdId;
-        if (hid == null || hid.isEmpty) {
+        final cg = state.profile.activeCareGroupId;
+        if (cg == null || cg.isEmpty) {
           return Scaffold(
             appBar: AppBar(title: const Text("Pathways")),
             body: const Center(
@@ -33,16 +33,16 @@ class PathwaysScreen extends StatelessWidget {
             ),
           );
         }
-        return _PathwaysBody(householdId: hid);
+        return _PathwaysBody(careGroupId: cg);
       },
     );
   }
 }
 
 class _PathwaysBody extends StatelessWidget {
-  const _PathwaysBody({required this.householdId});
+  const _PathwaysBody({required this.careGroupId});
 
-  final String householdId;
+  final String careGroupId;
 
   @override
   Widget build(BuildContext context) {
@@ -61,8 +61,8 @@ class _PathwaysBody extends StatelessWidget {
           },
         ),
       ),
-      body: FutureBuilder<HouseholdPathwaysSummary>(
-        future: repo.getHouseholdPathways(householdId),
+      body: FutureBuilder<CareGroupPathwaysSummary>(
+        future: repo.getCareGroupPathways(careGroupId),
         builder: (context, snap) {
           if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -90,16 +90,16 @@ class _PathwaysBody extends StatelessWidget {
 class _PathwaysList extends StatelessWidget {
   const _PathwaysList({required this.summary});
 
-  final HouseholdPathwaysSummary summary;
+  final CareGroupPathwaysSummary summary;
 
   @override
   Widget build(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        if (summary.householdName != null) ...[
+        if (summary.careGroupName != null) ...[
           Text(
-            summary.householdName!,
+            summary.careGroupName!,
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 4),

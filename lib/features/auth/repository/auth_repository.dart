@@ -4,7 +4,8 @@ import "package:google_sign_in/google_sign_in.dart";
 
 /// All Firebase Auth access for the app lives here (no Auth calls from UI).
 class AuthRepository {
-  AuthRepository({required bool firebaseReady}) : _firebaseReady = firebaseReady;
+  AuthRepository({required bool firebaseReady})
+      : _firebaseReady = firebaseReady;
 
   static Future<void>? _googleSignInInit;
 
@@ -103,9 +104,32 @@ class AuthRepository {
     await FirebaseAuth.instance.sendPasswordResetEmail(email: email.trim());
   }
 
+  /// Updates the signed-in user’s display name in Firebase Auth (and you should sync Firestore in [UserRepository]).
+  Future<void> updateDisplayName(String displayName) async {
+    _ensureFirebase();
+    final u = FirebaseAuth.instance.currentUser;
+    if (u == null) {
+      return;
+    }
+    final t = displayName.trim();
+    await u.updateDisplayName(t.isEmpty ? null : t);
+  }
+
+  /// Sets or clears the profile photo on the Auth user record.
+  Future<void> updatePhotoUrl(String? url) async {
+    _ensureFirebase();
+    final u = FirebaseAuth.instance.currentUser;
+    if (u == null) {
+      return;
+    }
+    final t = url?.trim();
+    await u.updatePhotoURL(t == null || t.isEmpty ? null : t);
+  }
+
   void _ensureFirebase() {
     if (!_firebaseReady) {
-      throw StateError("Firebase is not initialised. Run flutterfire configure.");
+      throw StateError(
+          "Firebase is not initialised. Run flutterfire configure.");
     }
   }
 }

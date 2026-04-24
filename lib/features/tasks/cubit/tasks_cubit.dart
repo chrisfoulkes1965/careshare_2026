@@ -1,4 +1,4 @@
-import "dart:async";
+﻿import "dart:async";
 
 import "package:file_picker/file_picker.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
@@ -10,14 +10,14 @@ import "tasks_state.dart";
 final class TasksCubit extends Cubit<TasksState> {
   TasksCubit({
     required TaskRepository repository,
-    required this.householdId,
+    required this.careGroupId,
   })  : _repository = repository,
         super(const TasksInitial());
 
   final TaskRepository _repository;
-  final String householdId;
+  final String careGroupId;
 
-  StreamSubscription<List<HouseholdTask>>? _sub;
+  StreamSubscription<List<CareGroupTask>>? _sub;
 
   void subscribe() {
     if (!_repository.isAvailable) {
@@ -26,7 +26,7 @@ final class TasksCubit extends Cubit<TasksState> {
     }
     emit(const TasksLoading());
     unawaited(_sub?.cancel());
-    _sub = _repository.watchTasks(householdId).listen(
+    _sub = _repository.watchTasks(careGroupId).listen(
       (list) {
         if (list.isEmpty) {
           emit(const TasksEmpty());
@@ -46,7 +46,7 @@ final class TasksCubit extends Cubit<TasksState> {
     List<PlatformFile> attachments = const [],
   }) {
     return _repository.addTask(
-      householdId: householdId,
+      careGroupId: careGroupId,
       title: title,
       assignedTo: assignedTo,
       notes: notes,
@@ -64,7 +64,7 @@ final class TasksCubit extends Cubit<TasksState> {
     List<PlatformFile> newAttachments = const [],
   }) {
     return _repository.updateTask(
-      householdId: householdId,
+      careGroupId: careGroupId,
       taskId: taskId,
       title: title,
       notes: notes,
@@ -76,7 +76,7 @@ final class TasksCubit extends Cubit<TasksState> {
 
   Future<void> setDone(String taskId, bool done) {
     return _repository.setTaskDone(
-      householdId: householdId,
+      careGroupId: careGroupId,
       taskId: taskId,
       done: done,
     );
@@ -84,7 +84,7 @@ final class TasksCubit extends Cubit<TasksState> {
 
   Future<void> deleteTask(String taskId) {
     return _repository.deleteTask(
-      householdId: householdId,
+      careGroupId: careGroupId,
       taskId: taskId,
     );
   }

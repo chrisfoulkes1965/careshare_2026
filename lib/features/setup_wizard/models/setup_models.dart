@@ -99,7 +99,7 @@ final class SetupPathways {
     CarePathwayOption(
       id: "elderly_care",
       title: "Elderly care",
-      description: "General support for an older adult — personal care, appointments, household tasks.",
+      description: "General support for an older adult — personal care, appointments, careGroup tasks.",
     ),
     CarePathwayOption(
       id: "dementia_care",

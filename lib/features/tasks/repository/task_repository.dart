@@ -1,4 +1,4 @@
-import "dart:async";
+﻿import "dart:async";
 
 import "package:cloud_firestore/cloud_firestore.dart";
 import "package:file_picker/file_picker.dart";
@@ -19,10 +19,10 @@ class TaskRepository {
 
   bool get isAvailable => _firebaseReady;
 
-  CollectionReference<Map<String, dynamic>> _tasks(String householdId) {
+  CollectionReference<Map<String, dynamic>> _tasks(String careGroupId) {
     return FirebaseFirestore.instance
-        .collection("households")
-        .doc(householdId)
+        .collection("careGroups")
+        .doc(careGroupId)
         .collection("tasks");
   }
 
@@ -32,25 +32,25 @@ class TaskRepository {
     return n.length > 200 ? n.substring(0, 200) : n;
   }
 
-  Stream<List<HouseholdTask>> watchTasks(String householdId) {
+  Stream<List<CareGroupTask>> watchTasks(String careGroupId) {
     if (!_firebaseReady) {
       return const Stream.empty();
     }
-    return _tasks(householdId)
+    return _tasks(careGroupId)
         .orderBy("createdAt", descending: true)
         .snapshots()
         .map(
-          (s) => s.docs.map(HouseholdTask.fromDoc).toList(),
+          (s) => s.docs.map(CareGroupTask.fromDoc).toList(),
         );
   }
 
   Future<void> _uploadAndMergeAttachmentUrls({
-    required String householdId,
+    required String careGroupId,
     required String taskId,
     required List<PlatformFile> files,
   }) async {
     if (files.isEmpty) return;
-    final root = FirebaseStorage.instance.ref().child("households/$householdId/task_attachments/$taskId");
+    final root = FirebaseStorage.instance.ref().child("careGroups/$careGroupId/task_attachments/$taskId");
     final urls = <String>[];
     for (final f in files) {
       final name = _safeFileName(f.name);
@@ -88,7 +88,7 @@ class TaskRepository {
     if (urls.isEmpty) {
       return;
     }
-    await _tasks(householdId).doc(taskId).update({
+    await _tasks(careGroupId).doc(taskId).update({
       "attachmentUrls": FieldValue.arrayUnion(urls),
     });
   }
@@ -96,7 +96,7 @@ class TaskRepository {
   /// Creates a task and uploads [attachments] into Storage, then appends [attachmentUrls].
 
   Future<String> addTask({
-    required String householdId,
+    required String careGroupId,
     required String title,
     String? assignedTo,
     String notes = '',
@@ -142,11 +142,11 @@ class TaskRepository {
       data["attachmentUrls"] = <String>[];
     }
 
-    final ref = await _tasks(householdId).add(data);
+    final ref = await _tasks(careGroupId).add(data);
     final id = ref.id;
     if (attachments.isNotEmpty) {
       await _uploadAndMergeAttachmentUrls(
-        householdId: householdId,
+        careGroupId: careGroupId,
         taskId: id,
         files: attachments,
       );
@@ -157,7 +157,7 @@ class TaskRepository {
   /// Updates text fields; merges [newAttachments] with existing [attachmentUrls].
 
   Future<void> updateTask({
-    required String householdId,
+    required String careGroupId,
     required String taskId,
     required String title,
     required String notes,
@@ -196,10 +196,10 @@ class TaskRepository {
       patch["assignedTo"] = FieldValue.delete();
     }
 
-    await _tasks(householdId).doc(taskId).update(patch);
+    await _tasks(careGroupId).doc(taskId).update(patch);
     if (newAttachments.isNotEmpty) {
       await _uploadAndMergeAttachmentUrls(
-        householdId: householdId,
+        careGroupId: careGroupId,
         taskId: taskId,
         files: newAttachments,
       );
@@ -209,21 +209,21 @@ class TaskRepository {
   /// Toggle done/open; must not change [createdBy] (rules require it to stay the same on update).
 
   Future<void> setTaskDone({
-    required String householdId,
+    required String careGroupId,
     required String taskId,
     required bool done,
   }) async {
     if (!_firebaseReady) return;
-    await _tasks(householdId).doc(taskId).update({
+    await _tasks(careGroupId).doc(taskId).update({
       "status": done ? "done" : "open",
     });
   }
 
   Future<void> deleteTask({
-    required String householdId,
+    required String careGroupId,
     required String taskId,
   }) async {
     if (!_firebaseReady) return;
-    await _tasks(householdId).doc(taskId).delete();
+    await _tasks(careGroupId).doc(taskId).delete();
   }
 }

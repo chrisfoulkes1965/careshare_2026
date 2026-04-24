@@ -1,4 +1,4 @@
-import "package:cloud_firestore/cloud_firestore.dart";
+﻿import "package:cloud_firestore/cloud_firestore.dart";
 import "package:firebase_auth/firebase_auth.dart";
 
 import "../models/household_meeting.dart";
@@ -10,25 +10,25 @@ class MeetingsRepository {
 
   bool get isAvailable => _firebaseReady;
 
-  CollectionReference<Map<String, dynamic>> _meetings(String householdId) {
+  CollectionReference<Map<String, dynamic>> _meetings(String careGroupId) {
     return FirebaseFirestore.instance
-        .collection("households")
-        .doc(householdId)
+        .collection("careGroups")
+        .doc(careGroupId)
         .collection("meetings");
   }
 
-  Stream<List<HouseholdMeeting>> watchMeetings(String householdId) {
+  Stream<List<CareGroupMeeting>> watchMeetings(String careGroupId) {
     if (!_firebaseReady) {
       return const Stream.empty();
     }
-    return _meetings(householdId)
+    return _meetings(careGroupId)
         .orderBy("meetingAt", descending: true)
         .snapshots()
-        .map((s) => s.docs.map(HouseholdMeeting.fromDoc).toList());
+        .map((s) => s.docs.map(CareGroupMeeting.fromDoc).toList());
   }
 
   Future<void> addMeeting({
-    required String householdId,
+    required String careGroupId,
     required String title,
     String body = "",
     String location = "",
@@ -43,7 +43,7 @@ class MeetingsRepository {
     if (t.isEmpty) {
       throw ArgumentError("Title is required.");
     }
-    await _meetings(householdId).add({
+    await _meetings(careGroupId).add({
       "title": t,
       "body": body.trim(),
       "location": location.trim(),
@@ -54,7 +54,7 @@ class MeetingsRepository {
   }
 
   Future<void> updateMeeting({
-    required String householdId,
+    required String careGroupId,
     required String meetingId,
     required String title,
     String body = "",
@@ -62,7 +62,7 @@ class MeetingsRepository {
     required DateTime meetingAt,
   }) async {
     if (!_firebaseReady) return;
-    await _meetings(householdId).doc(meetingId).update({
+    await _meetings(careGroupId).doc(meetingId).update({
       "title": title.trim(),
       "body": body.trim(),
       "location": location.trim(),
@@ -71,10 +71,10 @@ class MeetingsRepository {
   }
 
   Future<void> deleteMeeting({
-    required String householdId,
+    required String careGroupId,
     required String meetingId,
   }) async {
     if (!_firebaseReady) return;
-    await _meetings(householdId).doc(meetingId).delete();
+    await _meetings(careGroupId).doc(meetingId).delete();
   }
 }

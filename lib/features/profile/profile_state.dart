@@ -29,7 +29,7 @@ final class ProfileReady extends ProfileState {
   final List<CareGroupOption> careGroupOptions;
 
   /// When true, the user has more than one care group to choose from and must pick
-  /// a valid [UserProfile.activeHouseholdId] (or [selectActiveCareGroup] has not been called yet).
+  /// valid [UserProfile.activeCareGroupId] / [UserProfile.activeHouseholdId] (or [selectActiveCareGroup] has not been called yet).
   final bool requiresCareGroupSelection;
 
   @override

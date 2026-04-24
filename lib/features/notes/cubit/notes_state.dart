@@ -1,4 +1,4 @@
-import "package:equatable/equatable.dart";
+﻿import "package:equatable/equatable.dart";
 
 import "../models/household_note.dart";
 
@@ -24,7 +24,7 @@ final class NotesEmpty extends NotesState {
 final class NotesDisplay extends NotesState {
   const NotesDisplay({required this.list});
 
-  final List<HouseholdNote> list;
+  final List<CareGroupNote> list;
 
   @override
   List<Object?> get props => [list];

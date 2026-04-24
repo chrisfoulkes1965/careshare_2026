@@ -33,6 +33,7 @@ class _SignInScreenState extends State<SignInScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: BlocConsumer<AuthBloc, AuthState>(
           listenWhen: (previous, current) =>
@@ -46,110 +47,141 @@ class _SignInScreenState extends State<SignInScreen> {
             }
           },
           builder: (context, state) {
-            final firebaseReady = context.read<AuthRepository>().isAuthAvailable;
+            final firebaseReady =
+                context.read<AuthRepository>().isAuthAvailable;
 
-            return Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 420),
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          AppConstants.appName,
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                                color: AppColors.tealPrimary,
-                                fontWeight: FontWeight.bold,
-                              ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          "Sign in to coordinate care",
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                color: AppColors.grey500,
-                              ),
-                        ),
-                        if (!firebaseReady) ...[
-                          const SizedBox(height: 16),
-                          const _FirebaseSetupBanner(),
-                        ],
-                        const SizedBox(height: 32),
-                        TextFormField(
-                          controller: _emailController,
-                          keyboardType: TextInputType.emailAddress,
-                          autofillHints: const [AutofillHints.email],
-                          decoration: const InputDecoration(labelText: "Email"),
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return "Enter your email";
-                            }
-                            if (!value.contains("@")) {
-                              return "Enter a valid email";
-                            }
-                            return null;
-                          },
-                        ),
-                        const SizedBox(height: 12),
-                        TextFormField(
-                          controller: _passwordController,
-                          obscureText: _obscurePassword,
-                          autofillHints: const [AutofillHints.password],
-                          decoration: InputDecoration(
-                            labelText: "Password",
-                            suffixIcon: IconButton(
-                              onPressed: () {
-                                setState(() => _obscurePassword = !_obscurePassword);
-                              },
-                              icon: Icon(
-                                _obscurePassword ? Icons.visibility : Icons.visibility_off,
-                              ),
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  keyboardDismissBehavior:
+                      ScrollViewKeyboardDismissBehavior.onDrag,
+                  child: ConstrainedBox(
+                    constraints:
+                        BoxConstraints(minHeight: constraints.maxHeight),
+                    child: Center(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 420),
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Form(
+                            key: _formKey,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Text(
+                                  AppConstants.appName,
+                                  textAlign: TextAlign.center,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .headlineMedium
+                                      ?.copyWith(
+                                        color: AppColors.tealPrimary,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  "Sign in to coordinate care",
+                                  textAlign: TextAlign.center,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .bodyLarge
+                                      ?.copyWith(
+                                        color: AppColors.grey500,
+                                      ),
+                                ),
+                                if (!firebaseReady) ...[
+                                  const SizedBox(height: 16),
+                                  const _FirebaseSetupBanner(),
+                                ],
+                                const SizedBox(height: 32),
+                                TextFormField(
+                                  controller: _emailController,
+                                  keyboardType: TextInputType.emailAddress,
+                                  autofillHints: const [AutofillHints.email],
+                                  decoration:
+                                      const InputDecoration(labelText: "Email"),
+                                  validator: (value) {
+                                    if (value == null || value.trim().isEmpty) {
+                                      return "Enter your email";
+                                    }
+                                    if (!value.contains("@")) {
+                                      return "Enter a valid email";
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  controller: _passwordController,
+                                  obscureText: _obscurePassword,
+                                  autofillHints: const [AutofillHints.password],
+                                  decoration: InputDecoration(
+                                    labelText: "Password",
+                                    suffixIcon: IconButton(
+                                      onPressed: () {
+                                        setState(() => _obscurePassword =
+                                            !_obscurePassword);
+                                      },
+                                      icon: Icon(
+                                        _obscurePassword
+                                            ? Icons.visibility
+                                            : Icons.visibility_off,
+                                      ),
+                                    ),
+                                  ),
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return "Enter your password";
+                                    }
+                                    if (value.length < 8) {
+                                      return "Use at least 8 characters";
+                                    }
+                                    return null;
+                                  },
+                                ),
+                                const SizedBox(height: 8),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: TextButton(
+                                    onPressed: firebaseReady
+                                        ? () => _sendPasswordReset(context)
+                                        : null,
+                                    child: const Text("Forgot password?"),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                FilledButton(
+                                  onPressed: firebaseReady
+                                      ? _submitEmailPassword
+                                      : null,
+                                  child: const Text("Sign in"),
+                                ),
+                                const SizedBox(height: 8),
+                                OutlinedButton(
+                                  onPressed: firebaseReady
+                                      ? () => context.push("/register")
+                                      : null,
+                                  child: const Text("Create account"),
+                                ),
+                                const SizedBox(height: 12),
+                                OutlinedButton.icon(
+                                  onPressed:
+                                      firebaseReady ? _submitGoogle : null,
+                                  icon: const Icon(Icons.login),
+                                  label: const Text("Continue with Google"),
+                                ),
+                              ],
                             ),
                           ),
-                          validator: (value) {
-                            if (value == null || value.isEmpty) {
-                              return "Enter your password";
-                            }
-                            if (value.length < 8) {
-                              return "Use at least 8 characters";
-                            }
-                            return null;
-                          },
                         ),
-                        const SizedBox(height: 8),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: TextButton(
-                            onPressed: firebaseReady ? () => _sendPasswordReset(context) : null,
-                            child: const Text("Forgot password?"),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        FilledButton(
-                          onPressed: firebaseReady ? _submitEmailPassword : null,
-                          child: const Text("Sign in"),
-                        ),
-                        const SizedBox(height: 8),
-                        OutlinedButton(
-                          onPressed: firebaseReady ? () => context.push("/register") : null,
-                          child: const Text("Create account"),
-                        ),
-                        const SizedBox(height: 12),
-                        OutlinedButton.icon(
-                          onPressed: firebaseReady ? _submitGoogle : null,
-                          icon: const Icon(Icons.login),
-                          label: const Text("Continue with Google"),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
-                ),
-              ),
+                );
+              },
             );
           },
         ),
@@ -211,7 +243,10 @@ class _FirebaseSetupBanner extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         child: Text(
           "Firebase did not initialise. Run `flutterfire configure` and rebuild.",
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.grey900),
+          style: Theme.of(context)
+              .textTheme
+              .bodySmall
+              ?.copyWith(color: AppColors.grey900),
         ),
       ),
     );

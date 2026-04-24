@@ -1,4 +1,4 @@
-import "package:equatable/equatable.dart";
+﻿import "package:equatable/equatable.dart";
 
 import "../models/household_contact.dart";
 
@@ -24,7 +24,7 @@ final class ContactsEmpty extends ContactsState {
 final class ContactsDisplay extends ContactsState {
   const ContactsDisplay({required this.list});
 
-  final List<HouseholdContact> list;
+  final List<CareGroupContact> list;
 
   @override
   List<Object?> get props => [list];

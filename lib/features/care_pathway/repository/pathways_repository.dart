@@ -2,7 +2,7 @@ import "package:cloud_firestore/cloud_firestore.dart";
 
 import "../../setup_wizard/models/setup_models.dart";
 
-/// Resolves the active household’s pathway selection and (optionally) system pathway docs.
+/// Resolves the active careGroup’s pathway selection and (optionally) system pathway docs.
 class PathwaysRepository {
   PathwaysRepository({required bool firebaseReady}) : _firebaseReady = firebaseReady;
 
@@ -10,17 +10,17 @@ class PathwaysRepository {
 
   bool get isAvailable => _firebaseReady;
 
-  /// Labels for the household’s `pathwayIds` using the in-app catalog (wizard source of truth).
-  Future<HouseholdPathwaysSummary> getHouseholdPathways(String householdId) async {
+  /// Labels for the careGroup’s `pathwayIds` using the in-app catalog (wizard source of truth).
+  Future<CareGroupPathwaysSummary> getCareGroupPathways(String careGroupId) async {
     if (!_firebaseReady) {
-      return const HouseholdPathwaysSummary(householdName: null, selected: [], system: []);
+      return const CareGroupPathwaysSummary(careGroupName: null, selected: [], system: []);
     }
     final doc = await FirebaseFirestore.instance
-        .collection("households")
-        .doc(householdId)
+        .collection("careGroups")
+        .doc(careGroupId)
         .get();
     if (!doc.exists) {
-      return const HouseholdPathwaysSummary(householdName: null, selected: [], system: []);
+      return const CareGroupPathwaysSummary(careGroupName: null, selected: [], system: []);
     }
     final data = doc.data() ?? {};
     final name = (data["name"] as String?)?.trim();
@@ -51,8 +51,8 @@ class PathwaysRepository {
       system = [];
     }
 
-    return HouseholdPathwaysSummary(
-      householdName: name,
+    return CareGroupPathwaysSummary(
+      careGroupName: name,
       selected: selected,
       system: system,
     );
@@ -62,19 +62,19 @@ class PathwaysRepository {
     return CarePathwayOption(
       id: id,
       title: id,
-      description: "This pathway id is on your household document; add a matching title in the catalog if needed.",
+      description: "This pathway id is on your careGroup document; add a matching title in the catalog if needed.",
     );
   }
 }
 
-final class HouseholdPathwaysSummary {
-  const HouseholdPathwaysSummary({
-    required this.householdName,
+final class CareGroupPathwaysSummary {
+  const CareGroupPathwaysSummary({
+    required this.careGroupName,
     required this.selected,
     required this.system,
   });
 
-  final String? householdName;
+  final String? careGroupName;
   final List<CarePathwayOption> selected;
   final List<CarePathwayOption> system;
 }

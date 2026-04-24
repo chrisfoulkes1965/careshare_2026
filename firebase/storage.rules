@@ -1,37 +1,44 @@
 rules_version = '2';
 
-// Task attachments: path households/{householdId}/task_attachments/{taskId}/{fileName}
-// Access aligned with care group membership (same idea as firestore householder checks).
+// Task attachments: path careGroups/{careGroupId}/task_attachments/{taskId}/{fileName}
+// Access aligned with care group membership (same idea as firestore careGrouper checks).
 
 service firebase.storage {
   match /b/{bucket}/o {
-    function householdData(hid) {
-      return firestore.get(/databases/(default)/documents/households/$(hid));
+    function careGroupData(hid) {
+      return firestore.get(/databases/(default)/documents/careGroups/$(hid));
     }
-    function isMemberOfHouseholdFromStorage(householdId) {
+    // Match Firestore: members live on the "team" doc; the linked doc holds household
+    // fields. Direct membership on the path id, or membership on the document linked by
+    // [careGroupId], must grant access.
+    function isMemberOfCareGroupFromStorage(careGroupDocId) {
       return request.auth != null
-        && firestore.exists(/databases/(default)/documents/households/$(householdId))
         && (
-          (householdData(householdId).data.careGroupId is string
+          firestore.exists(
+            /databases/(default)/documents/careGroups/$(careGroupDocId)/members/$(request.auth.uid)
+          )
+          || (
+            firestore.exists(/databases/(default)/documents/careGroups/$(careGroupDocId))
+            && careGroupData(careGroupDocId).data.careGroupId is string
             && firestore.exists(
-              /databases/(default)/documents/careGroups/$(householdData(householdId).data.careGroupId)/members/$(request.auth.uid)
+              /databases/(default)/documents/careGroups/$(careGroupData(careGroupDocId).data.careGroupId)/members/$(request.auth.uid)
             )
           )
         );
     }
 
-    match /households/{householdId}/task_attachments/{taskId}/{fileName} {
-      allow read: if isMemberOfHouseholdFromStorage(householdId);
-      allow create, update: if isMemberOfHouseholdFromStorage(householdId)
+    match /careGroups/{careGroupId}/task_attachments/{taskId}/{fileName} {
+      allow read: if isMemberOfCareGroupFromStorage(careGroupId);
+      allow create, update: if isMemberOfCareGroupFromStorage(careGroupId)
         && request.resource.size < 10 * 1024 * 1024;
-      allow delete: if isMemberOfHouseholdFromStorage(householdId);
+      allow delete: if isMemberOfCareGroupFromStorage(careGroupId);
     }
 
-    match /households/{householdId}/medication_photos/{medicationId}/{fileName} {
-      allow read: if isMemberOfHouseholdFromStorage(householdId);
-      allow create, update: if isMemberOfHouseholdFromStorage(householdId)
+    match /careGroups/{careGroupId}/medication_photos/{medicationId}/{fileName} {
+      allow read: if isMemberOfCareGroupFromStorage(careGroupId);
+      allow create, update: if isMemberOfCareGroupFromStorage(careGroupId)
         && request.resource.size < 8 * 1024 * 1024;
-      allow delete: if isMemberOfHouseholdFromStorage(householdId);
+      allow delete: if isMemberOfCareGroupFromStorage(careGroupId);
     }
 
     // Default deny

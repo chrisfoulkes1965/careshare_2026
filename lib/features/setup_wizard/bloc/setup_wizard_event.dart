@@ -26,8 +26,8 @@ final class SetupWizardPathwayToggled extends SetupWizardEvent {
   List<Object?> get props => [pathwayId];
 }
 
-final class SetupWizardHouseholdNameChanged extends SetupWizardEvent {
-  const SetupWizardHouseholdNameChanged(this.value);
+final class SetupWizardCareGroupNameChanged extends SetupWizardEvent {
+  const SetupWizardCareGroupNameChanged(this.value);
 
   final String value;
 
@@ -35,8 +35,8 @@ final class SetupWizardHouseholdNameChanged extends SetupWizardEvent {
   List<Object?> get props => [value];
 }
 
-final class SetupWizardHouseholdDescriptionChanged extends SetupWizardEvent {
-  const SetupWizardHouseholdDescriptionChanged(this.value);
+final class SetupWizardCareGroupDescriptionChanged extends SetupWizardEvent {
+  const SetupWizardCareGroupDescriptionChanged(this.value);
 
   final String value;
 

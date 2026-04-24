@@ -13,7 +13,7 @@ class CareGroupSelectScreen extends StatelessWidget {
   const CareGroupSelectScreen({super.key, this.pickerMode = false});
 
   /// `true` when opened from the home "Switch care group" action (user may
-  /// already have a valid [UserProfile.activeHouseholdId]).
+  /// already have a valid [UserProfile.activeCareGroupId]).
   final bool pickerMode;
 
   @override
@@ -137,10 +137,11 @@ class _CareGroupListState extends State<_CareGroupList> {
                 ),
               ],
             ),
-            if (_saving) const ColoredBox(
-              color: Color(0x33FFFFFF),
-              child: Center(child: CircularProgressIndicator()),
-            ),
+            if (_saving)
+              const ColoredBox(
+                color: Color(0x33FFFFFF),
+                child: Center(child: CircularProgressIndicator()),
+              ),
           ],
         ),
         bottomNavigationBar: _error == null
@@ -151,7 +152,8 @@ class _CareGroupListState extends State<_CareGroupList> {
                   child: Text(
                     _error!,
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    style:
+                        TextStyle(color: Theme.of(context).colorScheme.error),
                   ),
                 ),
               ),

@@ -21,8 +21,8 @@ final class SetupWizardBloc extends Bloc<SetupWizardEvent, SetupWizardState> {
     on<SetupWizardNextPressed>(_onNext);
     on<SetupWizardBackPressed>(_onBack);
     on<SetupWizardPathwayToggled>(_onPathwayToggled);
-    on<SetupWizardHouseholdNameChanged>(_onHouseholdName);
-    on<SetupWizardHouseholdDescriptionChanged>(_onHouseholdDescription);
+    on<SetupWizardCareGroupNameChanged>(_onCareGroupName);
+    on<SetupWizardCareGroupDescriptionChanged>(_onCareGroupDescription);
     on<SetupWizardAddressChanged>(_onAddress);
     on<SetupWizardAddressTypeChanged>(_onAddressType);
     on<SetupWizardCaredForMyselfToggled>(_onCaredForMyselfToggled);
@@ -89,20 +89,20 @@ final class SetupWizardBloc extends Bloc<SetupWizardEvent, SetupWizardState> {
     await _persistDraft(updated);
   }
 
-  Future<void> _onHouseholdName(
-    SetupWizardHouseholdNameChanged event,
+  Future<void> _onCareGroupName(
+    SetupWizardCareGroupNameChanged event,
     Emitter<SetupWizardState> emit,
   ) async {
-    final updated = state.copyWith(householdName: event.value, clearError: true);
+    final updated = state.copyWith(careGroupName: event.value, clearError: true);
     emit(updated);
     await _persistDraft(updated);
   }
 
-  Future<void> _onHouseholdDescription(
-    SetupWizardHouseholdDescriptionChanged event,
+  Future<void> _onCareGroupDescription(
+    SetupWizardCareGroupDescriptionChanged event,
     Emitter<SetupWizardState> emit,
   ) async {
-    final updated = state.copyWith(householdDescription: event.value, clearError: true);
+    final updated = state.copyWith(careGroupDescription: event.value, clearError: true);
     emit(updated);
     await _persistDraft(updated);
   }
@@ -299,8 +299,8 @@ final class SetupWizardBloc extends Bloc<SetupWizardEvent, SetupWizardState> {
       await _setupRepository.completeWizard(
         uid: uid,
         submit: SetupSubmit(
-          householdName: state.householdName.trim(),
-          householdDescription: state.householdDescription.trim(),
+          careGroupName: state.careGroupName.trim(),
+          careGroupDescription: state.careGroupDescription.trim(),
           pathwayIds: state.selectedPathwayIds.toList(),
           recipients: state.recipients
               .map(
@@ -355,8 +355,8 @@ final class SetupWizardBloc extends Bloc<SetupWizardEvent, SetupWizardState> {
           return "Choose at least one care pathway.";
         }
         return null;
-      case SetupWizardStep.household:
-        if (s.householdName.trim().isEmpty) {
+      case SetupWizardStep.careGroup:
+        if (s.careGroupName.trim().isEmpty) {
           return "Name your care group.";
         }
         return null;
@@ -370,7 +370,7 @@ final class SetupWizardBloc extends Bloc<SetupWizardEvent, SetupWizardState> {
         }
         if (s.address.trim().isEmpty) return "Enter the address for this care group.";
         if (s.selectedPathwayIds.isEmpty) return "Choose at least one care pathway.";
-        if (s.householdName.trim().isEmpty) return "Name your care group.";
+        if (s.careGroupName.trim().isEmpty) return "Name your care group.";
         return null;
     }
   }

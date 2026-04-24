@@ -1,4 +1,4 @@
-import "dart:async";
+﻿import "dart:async";
 
 import "package:flutter_bloc/flutter_bloc.dart";
 
@@ -9,14 +9,14 @@ import "contacts_state.dart";
 final class ContactsCubit extends Cubit<ContactsState> {
   ContactsCubit({
     required ContactsRepository repository,
-    required this.householdId,
+    required this.careGroupId,
   })  : _repository = repository,
         super(const ContactsInitial());
 
   final ContactsRepository _repository;
-  final String householdId;
+  final String careGroupId;
 
-  StreamSubscription<List<HouseholdContact>>? _sub;
+  StreamSubscription<List<CareGroupContact>>? _sub;
 
   void subscribe() {
     if (!_repository.isAvailable) {
@@ -25,7 +25,7 @@ final class ContactsCubit extends Cubit<ContactsState> {
     }
     emit(const ContactsLoading());
     unawaited(_sub?.cancel());
-    _sub = _repository.watchContacts(householdId).listen(
+    _sub = _repository.watchContacts(careGroupId).listen(
       (list) {
         if (list.isEmpty) {
           emit(const ContactsEmpty());
@@ -44,7 +44,7 @@ final class ContactsCubit extends Cubit<ContactsState> {
     String notes = "",
   }) {
     return _repository.addContact(
-      householdId: householdId,
+      careGroupId: careGroupId,
       name: name,
       phone: phone,
       email: email,
@@ -60,7 +60,7 @@ final class ContactsCubit extends Cubit<ContactsState> {
     String notes = "",
   }) {
     return _repository.updateContact(
-      householdId: householdId,
+      careGroupId: careGroupId,
       contactId: contactId,
       name: name,
       phone: phone,
@@ -71,7 +71,7 @@ final class ContactsCubit extends Cubit<ContactsState> {
 
   Future<void> deleteContact(String contactId) {
     return _repository.deleteContact(
-      householdId: householdId,
+      careGroupId: careGroupId,
       contactId: contactId,
     );
   }

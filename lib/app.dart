@@ -10,7 +10,9 @@ import "features/care_pathway/repository/pathways_repository.dart";
 import "features/contacts/repository/contacts_repository.dart";
 import "features/invitations/repository/invitation_repository.dart";
 import "features/journal/repository/journal_repository.dart";
+import "features/medications/repository/medication_care_group_settings_repository.dart";
 import "features/medications/repository/medications_repository.dart";
+import "features/medications/view/medication_dose_route_args.dart";
 import "features/meetings/repository/meetings_repository.dart";
 import "features/members/repository/members_repository.dart";
 import "features/notes/repository/notes_repository.dart";
@@ -31,6 +33,7 @@ class CareShareApp extends StatefulWidget {
 class _CareShareAppState extends State<CareShareApp> with WidgetsBindingObserver {
   GoRouter? _router;
   SessionRefresh? _sessionRefresh;
+  bool _doseNavRegistered = false;
 
   @override
   void initState() {
@@ -47,6 +50,28 @@ class _CareShareAppState extends State<CareShareApp> with WidgetsBindingObserver
           profileCubit: profileCubit,
           sessionRefresh: _sessionRefresh!,
         );
+        if (_router != null && !_doseNavRegistered) {
+          _doseNavRegistered = true;
+          MedicationNotificationService.instance.setDosePayloadHandler((payload) {
+            final parts = payload.split("|");
+            if (parts.length < 3) {
+              return;
+            }
+            final cg = parts[1];
+            final ids = parts[2]
+                .split(",")
+                .map((e) => e.trim())
+                .where((e) => e.isNotEmpty)
+                .toList();
+            if (ids.isEmpty) {
+              return;
+            }
+            _router!.push("/medication-dose", extra: MedicationDoseRouteArgs(
+              careGroupId: cg,
+              medicationIds: ids,
+            ),);
+          });
+        }
       });
     });
   }
@@ -104,7 +129,7 @@ class CareShareRoot extends StatelessWidget {
               child: RepositoryProvider(
                 create: (_) => JournalRepository(firebaseReady: firebaseReady),
                 child: RepositoryProvider(
-                  create: (_) => PathwaysRepository(firebaseReady: firebaseReady),
+          create: (_) => PathwaysRepository(firebaseReady: firebaseReady),
                   child: RepositoryProvider(
                     create: (_) => NotesRepository(firebaseReady: firebaseReady),
                     child: RepositoryProvider(
@@ -113,8 +138,10 @@ class CareShareRoot extends StatelessWidget {
                         create: (_) => ContactsRepository(firebaseReady: firebaseReady),
                         child: RepositoryProvider(
                           create: (_) => MeetingsRepository(firebaseReady: firebaseReady),
-                          child: RepositoryProvider(
-                            create: (_) => MedicationsRepository(firebaseReady: firebaseReady),
+                        child: RepositoryProvider(
+                          create: (_) => MedicationCareGroupSettingsRepository(firebaseReady: firebaseReady),
+                        child: RepositoryProvider(
+                          create: (_) => MedicationsRepository(firebaseReady: firebaseReady),
                             child: BlocProvider(
                               create: (context) => AuthBloc(
                                 repository: context.read<AuthRepository>(),
@@ -128,6 +155,7 @@ class CareShareRoot extends StatelessWidget {
                               ),
                             ),
                           ),
+                        ),
                         ),
                       ),
                     ),

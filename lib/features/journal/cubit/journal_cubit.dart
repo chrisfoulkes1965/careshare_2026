@@ -9,12 +9,12 @@ import "journal_state.dart";
 final class JournalCubit extends Cubit<JournalState> {
   JournalCubit({
     required JournalRepository repository,
-    required this.householdId,
+    required this.careGroupId,
   })  : _repository = repository,
         super(const JournalInitial());
 
   final JournalRepository _repository;
-  final String householdId;
+  final String careGroupId;
 
   StreamSubscription<List<JournalEntry>>? _sub;
 
@@ -25,7 +25,7 @@ final class JournalCubit extends Cubit<JournalState> {
     }
     emit(const JournalLoading());
     unawaited(_sub?.cancel());
-    _sub = _repository.watchJournal(householdId).listen(
+    _sub = _repository.watchJournal(careGroupId).listen(
       (list) {
         if (list.isEmpty) {
           emit(const JournalEmpty());
@@ -45,7 +45,7 @@ final class JournalCubit extends Cubit<JournalState> {
   }
 
   Future<void> addEntry({required String title, String body = ""}) {
-    return _repository.addEntry(householdId: householdId, title: title, body: body);
+    return _repository.addEntry(careGroupId: careGroupId, title: title, body: body);
   }
 
   Future<void> updateEntry({
@@ -54,7 +54,7 @@ final class JournalCubit extends Cubit<JournalState> {
     String body = "",
   }) {
     return _repository.updateEntry(
-      householdId: householdId,
+      careGroupId: careGroupId,
       entryId: entryId,
       title: title,
       body: body,
@@ -63,7 +63,7 @@ final class JournalCubit extends Cubit<JournalState> {
 
   Future<void> deleteEntry(String entryId) {
     return _repository.deleteEntry(
-      householdId: householdId,
+      careGroupId: careGroupId,
       entryId: entryId,
     );
   }

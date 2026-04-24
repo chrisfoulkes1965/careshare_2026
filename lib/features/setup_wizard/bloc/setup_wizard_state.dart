@@ -8,7 +8,7 @@ enum SetupWizardStep {
   caredFor,
   location,
   pathways,
-  household,
+  careGroup,
   invites,
   avatar,
   summary,
@@ -18,8 +18,8 @@ final class SetupWizardState extends Equatable {
   const SetupWizardState({
     required this.step,
     required this.selectedPathwayIds,
-    required this.householdName,
-    required this.householdDescription,
+    required this.careGroupName,
+    required this.careGroupDescription,
     required this.recipients,
     required this.inviteEmails,
     required this.inviteEmailInput,
@@ -34,8 +34,8 @@ final class SetupWizardState extends Equatable {
     return const SetupWizardState(
       step: SetupWizardStep.welcome,
       selectedPathwayIds: {},
-      householdName: "",
-      householdDescription: "",
+      careGroupName: "",
+      careGroupDescription: "",
       recipients: [],
       inviteEmails: [],
       inviteEmailInput: "",
@@ -67,8 +67,8 @@ final class SetupWizardState extends Equatable {
     return SetupWizardState(
       step: step,
       selectedPathwayIds: pathways.toSet(),
-      householdName: draft["householdName"] as String? ?? "",
-      householdDescription: draft["householdDescription"] as String? ?? "",
+      careGroupName: draft["careGroupName"] as String? ?? "",
+      careGroupDescription: draft["careGroupDescription"] as String? ?? "",
       recipients: recipients,
       inviteEmails: (draft["inviteEmails"] as List?)?.cast<String>() ?? const [],
       inviteEmailInput: "",
@@ -80,8 +80,8 @@ final class SetupWizardState extends Equatable {
 
   final SetupWizardStep step;
   final Set<String> selectedPathwayIds;
-  final String householdName;
-  final String householdDescription;
+  final String careGroupName;
+  final String careGroupDescription;
   final List<RecipientDraft> recipients;
   final List<String> inviteEmails;
   final String inviteEmailInput;
@@ -95,8 +95,8 @@ final class SetupWizardState extends Equatable {
     return {
       "step": step.name,
       "pathways": selectedPathwayIds.toList(),
-      "householdName": householdName,
-      "householdDescription": householdDescription,
+      "careGroupName": careGroupName,
+      "careGroupDescription": careGroupDescription,
       "recipients": recipients.map((e) => e.toMap()).toList(),
       "inviteEmails": inviteEmails,
       "address": address,
@@ -108,8 +108,8 @@ final class SetupWizardState extends Equatable {
   SetupWizardState copyWith({
     SetupWizardStep? step,
     Set<String>? selectedPathwayIds,
-    String? householdName,
-    String? householdDescription,
+    String? careGroupName,
+    String? careGroupDescription,
     List<RecipientDraft>? recipients,
     List<String>? inviteEmails,
     String? inviteEmailInput,
@@ -123,8 +123,8 @@ final class SetupWizardState extends Equatable {
     return SetupWizardState(
       step: step ?? this.step,
       selectedPathwayIds: selectedPathwayIds ?? this.selectedPathwayIds,
-      householdName: householdName ?? this.householdName,
-      householdDescription: householdDescription ?? this.householdDescription,
+      careGroupName: careGroupName ?? this.careGroupName,
+      careGroupDescription: careGroupDescription ?? this.careGroupDescription,
       recipients: recipients ?? this.recipients,
       inviteEmails: inviteEmails ?? this.inviteEmails,
       inviteEmailInput: inviteEmailInput ?? this.inviteEmailInput,
@@ -140,8 +140,8 @@ final class SetupWizardState extends Equatable {
   List<Object?> get props => [
         step,
         selectedPathwayIds,
-        householdName,
-        householdDescription,
+        careGroupName,
+        careGroupDescription,
         recipients,
         inviteEmails,
         inviteEmailInput,

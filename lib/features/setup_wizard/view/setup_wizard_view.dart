@@ -688,22 +688,22 @@ class _CareGroupStep extends StatelessWidget {
           Expanded(
             child: BlocBuilder<SetupWizardBloc, SetupWizardState>(
               buildWhen: (p, c) =>
-                  p.householdName != c.householdName || p.householdDescription != c.householdDescription,
+                  p.careGroupName != c.careGroupName || p.careGroupDescription != c.careGroupDescription,
               builder: (context, state) {
                 return ListView(
                   children: [
                     _SyncedTextField(
-                      value: state.householdName,
+                      value: state.careGroupName,
                       decoration: const InputDecoration(labelText: "Care group name"),
-                      onChanged: (v) => context.read<SetupWizardBloc>().add(SetupWizardHouseholdNameChanged(v)),
+                      onChanged: (v) => context.read<SetupWizardBloc>().add(SetupWizardCareGroupNameChanged(v)),
                     ),
                     const SizedBox(height: 12),
                     _SyncedTextField(
-                      value: state.householdDescription,
+                      value: state.careGroupDescription,
                       decoration: const InputDecoration(labelText: "Description (optional)"),
                       minLines: 2,
                       maxLines: 4,
-                      onChanged: (v) => context.read<SetupWizardBloc>().add(SetupWizardHouseholdDescriptionChanged(v)),
+                      onChanged: (v) => context.read<SetupWizardBloc>().add(SetupWizardCareGroupDescriptionChanged(v)),
                     ),
                   ],
                 );
@@ -840,7 +840,7 @@ class _AvatarStep extends StatelessWidget {
           Text("Choose an avatar", style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
           Text(
-            "Pick a creature avatar. You can upload a photo later in your profile.",
+            "Pick an avatar from the set below. You can upload a photo later in your profile.",
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.grey500),
           ),
           const SizedBox(height: 12),
@@ -854,38 +854,48 @@ class _AvatarStep extends StatelessWidget {
                     mainAxisSpacing: 10,
                     crossAxisSpacing: 10,
                   ),
-                  itemCount: kSetupAvatarEmojis.length,
+                  itemCount: kSetupAvatarCount,
                   itemBuilder: (context, index) {
                     final n = index + 1;
                     final selected = state.avatarIndex == n;
-                    final emoji = setupAvatarEmoji(n);
-                    return InkWell(
-                      onTap: () => context.read<SetupWizardBloc>().add(SetupWizardAvatarSelected(n)),
-                      borderRadius: BorderRadius.circular(12),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 150),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: selected ? AppColors.tealPrimary : AppColors.grey200,
-                            width: selected ? 3 : 1,
+                    final path = setupAvatarAssetPath(n);
+                    return Semantics(
+                      label: "Avatar option $n",
+                      button: true,
+                      selected: selected,
+                      child: InkWell(
+                        onTap: () => context.read<SetupWizardBloc>().add(SetupWizardAvatarSelected(n)),
+                        borderRadius: BorderRadius.circular(12),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: selected ? AppColors.tealPrimary : AppColors.grey200,
+                              width: selected ? 3 : 1,
+                            ),
                           ),
-                        ),
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: ColoredBox(
-                            color: setupAvatarBackground(n),
-                            child: Center(
-                              child: FittedBox(
-                                child: Padding(
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(10),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                ColoredBox(color: setupAvatarBackground(n)),
+                                Padding(
                                   padding: const EdgeInsets.all(6),
-                                  child: Text(
-                                    emoji,
-                                    style: const TextStyle(fontSize: 40, height: 1.1),
-                                    semanticsLabel: "Avatar option $n",
-                                  ),
+                                  child: path == null
+                                      ? const Center(
+                                          child: Icon(Icons.pets, size: 32),
+                                        )
+                                      : Image.asset(
+                                          path,
+                                          fit: BoxFit.contain,
+                                          errorBuilder: (_, __, ___) => const Center(
+                                            child: Icon(Icons.pets, size: 32),
+                                          ),
+                                        ),
                                 ),
-                              ),
+                              ],
                             ),
                           ),
                         ),
@@ -969,7 +979,7 @@ class _SummaryStep extends StatelessWidget {
                     ListTile(
                       leading: const Icon(Icons.home_outlined),
                       title: const Text("Care group"),
-                      subtitle: Text(state.householdName.trim().isEmpty ? "—" : state.householdName.trim()),
+                      subtitle: Text(state.careGroupName.trim().isEmpty ? "—" : state.careGroupName.trim()),
                     ),
                     ListTile(
                       leading: const Icon(Icons.route_outlined),
@@ -982,12 +992,20 @@ class _SummaryStep extends StatelessWidget {
                       subtitle: Text(state.inviteEmails.isEmpty ? "None" : state.inviteEmails.join(", ")),
                     ),
                     ListTile(
-                      leading: Text(
-                        setupAvatarEmoji(state.avatarIndex),
-                        style: const TextStyle(fontSize: 28),
+                      leading: SizedBox(
+                        width: 40,
+                        height: 40,
+                        child: ClipOval(
+                          child: buildSetupAvatarImage(
+                            state.avatarIndex,
+                            width: 40,
+                            height: 40,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
                       ),
                       title: const Text("Avatar"),
-                      subtitle: Text("Option ${state.avatarIndex} of ${kSetupAvatarEmojis.length}"),
+                      subtitle: Text("Option ${state.avatarIndex} of $kSetupAvatarCount"),
                     ),
                   ],
                 ),
