@@ -1,7 +1,7 @@
 import "package:flutter_local_notifications/flutter_local_notifications.dart";
 import "package:timezone/timezone.dart" as tz;
 
-import "../../features/medications/models/household_medication.dart";
+import "../../features/medications/models/care_group_medication.dart";
 
 /// A single grouped local notification.
 final class DoseNudge {

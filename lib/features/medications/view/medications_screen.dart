@@ -1,4 +1,4 @@
-﻿import "package:flutter/material.dart";
+import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
 
@@ -7,7 +7,7 @@ import "../../profile/profile_cubit.dart";
 import "../../profile/profile_state.dart";
 import "../cubit/medications_cubit.dart";
 import "../logic/medication_reorder.dart";
-import "../models/household_medication.dart";
+import "../models/care_group_medication.dart";
 import "../models/medication_care_group_settings.dart";
 import "../repository/medication_care_group_settings_repository.dart";
 import "../repository/medications_repository.dart";
@@ -23,11 +23,10 @@ class MedicationsScreen extends StatelessWidget {
       builder: (context, state) {
         if (state is! ProfileReady) {
           return const Scaffold(
-            body: Center(child: Text("Loading your profile…")),
+            body: Center(child: Text("Loading your profile?")),
           );
         }
-        final cg = state.profile.activeCareGroupId;
-        final hh = state.profile.activeHouseholdId;
+        final cg = state.activeCareGroupDataId;
         if (cg == null || cg.isEmpty) {
           return Scaffold(
             appBar: AppBar(title: const Text("Prescriptions & reminders")),
@@ -48,7 +47,7 @@ class MedicationsScreen extends StatelessWidget {
             repository: context.read<MedicationsRepository>(),
             careGroupId: cg,
           )..subscribe(),
-          child: _MedicationsView(householdId: hh),
+          child: _MedicationsView(careGroupId: cg),
         );
       },
     );
@@ -56,9 +55,9 @@ class MedicationsScreen extends StatelessWidget {
 }
 
 class _MedicationsView extends StatefulWidget {
-  const _MedicationsView({required this.householdId});
+  const _MedicationsView({required this.careGroupId});
 
-  final String? householdId;
+  final String? careGroupId;
 
   @override
   State<_MedicationsView> createState() => _MedicationsViewState();
@@ -79,18 +78,18 @@ class _MedicationsViewState extends State<_MedicationsView> {
         }
       },
       builder: (context, state) {
-        final hid = widget.householdId;
-        if (hid == null || hid.isEmpty) {
+        final cg = widget.careGroupId;
+        if (cg == null || cg.isEmpty) {
           return _scaffoldForState(context, state, null);
         }
         return StreamBuilder<MedicationInventoryCareGroupSettings>(
-          stream: context.read<MedicationCareGroupSettingsRepository>().watchSettings(hid),
+          stream: context.read<MedicationCareGroupSettingsRepository>().watchSettings(cg),
           builder: (context, settingsSnap) {
             final st = settingsSnap.data ?? const MedicationInventoryCareGroupSettings();
             if (state is MedicationsDisplay) {
               _maybeShowReorderDialog(context, state.list, st);
             }
-            return _scaffoldForState(context, state, hid);
+            return _scaffoldForState(context, state, cg);
           },
         );
       },
@@ -140,8 +139,8 @@ class _MedicationsViewState extends State<_MedicationsView> {
               "Consider restocking in one go:\n\n"
               "${batch.map((e) {
                 final d = e.estimatedDaysOfSupply;
-                final ds = d == null ? "—" : "${d.toStringAsFixed(1)} d left";
-                return "• ${e.name} — $ds";
+                final ds = d == null ? "?" : "${d.toStringAsFixed(1)} d left";
+                return "? ${e.name} ? $ds";
               }).join("\n")}",
             ),
           ),
@@ -162,7 +161,7 @@ class _MedicationsViewState extends State<_MedicationsView> {
   Widget _scaffoldForState(
     BuildContext context,
     MedicationsState state,
-    String? householdId,
+    String? careGroupId,
   ) {
     return Scaffold(
       appBar: AppBar(
@@ -178,11 +177,11 @@ class _MedicationsViewState extends State<_MedicationsView> {
           },
         ),
         actions: [
-          if (householdId != null && householdId.isNotEmpty)
+          if (careGroupId != null && careGroupId.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.inventory_2_outlined),
               tooltip: "Inventory & reorder settings",
-              onPressed: () => MedicationInventorySettingsSheet.show(context, householdId: householdId),
+              onPressed: () => MedicationInventorySettingsSheet.show(context, careGroupId: careGroupId),
             ),
         ],
       ),

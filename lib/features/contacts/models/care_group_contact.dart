@@ -1,6 +1,6 @@
 import "package:cloud_firestore/cloud_firestore.dart";
 
-/// `careGroups/{hid}/contacts/{id}` — shared directory for the care team.
+/// `careGroups/{careGroupId}/contacts/{id}` — shared directory for the care team.
 final class CareGroupContact {
   const CareGroupContact({
     required this.id,

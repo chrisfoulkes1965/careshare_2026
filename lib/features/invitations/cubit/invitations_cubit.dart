@@ -10,13 +10,13 @@ final class InvitationsCubit extends Cubit<InvitationsState> {
   InvitationsCubit({
     required InvitationRepository repository,
     required this.careGroupId,
-    required this.householdId,
+    required this.dataCareGroupId,
   })  : _repository = repository,
         super(const InvitationsInitial());
 
   final InvitationRepository _repository;
   final String careGroupId;
-  final String householdId;
+  final String dataCareGroupId;
 
   StreamSubscription<List<CareInvitation>>? _sub;
 
@@ -42,9 +42,17 @@ final class InvitationsCubit extends Cubit<InvitationsState> {
   Future<void> invite(String email) {
     return _repository.createInvitation(
       careGroupId: careGroupId,
-      householdId: householdId,
+      dataCareGroupId: dataCareGroupId,
       email: email,
     );
+  }
+
+  Future<void> rescindInvitation(String invitationId) {
+    return _repository.deleteInvitation(invitationId);
+  }
+
+  Future<void> resendInvitationEmail(String invitationId) {
+    return _repository.requestResendInvitationEmail(invitationId);
   }
 
   @override

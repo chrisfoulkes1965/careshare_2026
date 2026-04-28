@@ -8,7 +8,7 @@ import "../../profile/profile_cubit.dart";
 import "../../profile/profile_state.dart";
 import "../cubit/tasks_cubit.dart";
 import "../cubit/tasks_state.dart";
-import "../models/household_task.dart";
+import "../models/care_group_task.dart";
 import "../repository/task_repository.dart";
 import "task_editor_sheet.dart";
 

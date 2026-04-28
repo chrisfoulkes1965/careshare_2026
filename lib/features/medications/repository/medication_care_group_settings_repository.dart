@@ -7,33 +7,33 @@ class MedicationCareGroupSettingsRepository {
 
   final bool _ok;
 
-  DocumentReference<Map<String, dynamic>> _householdRef(String householdId) =>
-      FirebaseFirestore.instance.collection("careGroups").doc(householdId);
+  DocumentReference<Map<String, dynamic>> _careGroupDocRef(String careGroupId) =>
+      FirebaseFirestore.instance.collection("careGroups").doc(careGroupId);
 
-  Stream<MedicationInventoryCareGroupSettings> watchSettings(String householdId) {
+  Stream<MedicationInventoryCareGroupSettings> watchSettings(String careGroupId) {
     if (!_ok) {
       return Stream.value(const MedicationInventoryCareGroupSettings());
     }
-    return _householdRef(householdId).snapshots().map(
+    return _careGroupDocRef(careGroupId).snapshots().map(
           (s) => MedicationInventoryCareGroupSettings.fromData(s.data()),
         );
   }
 
-  Future<MedicationInventoryCareGroupSettings> getSettings(String householdId) async {
+  Future<MedicationInventoryCareGroupSettings> getSettings(String careGroupId) async {
     if (!_ok) {
       return const MedicationInventoryCareGroupSettings();
     }
-    final s = await _householdRef(householdId).get();
+    final s = await _careGroupDocRef(careGroupId).get();
     return MedicationInventoryCareGroupSettings.fromData(s.data());
   }
 
   Future<void> saveSettings(
-    String householdId,
+    String careGroupId,
     MedicationInventoryCareGroupSettings s,
   ) async {
     if (!_ok) {
       return;
     }
-    await _householdRef(householdId).set(s.toMap(), SetOptions(merge: true));
+    await _careGroupDocRef(careGroupId).set(s.toMap(), SetOptions(merge: true));
   }
 }

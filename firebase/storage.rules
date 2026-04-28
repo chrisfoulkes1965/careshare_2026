@@ -5,12 +5,12 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    function careGroupData(hid) {
-      return firestore.get(/databases/(default)/documents/careGroups/$(hid));
+    function careGroupData(careGroupDocId) {
+      return firestore.get(/databases/(default)/documents/careGroups/$(careGroupDocId));
     }
-    // Match Firestore: members live on the "team" doc; the linked doc holds household
-    // fields. Direct membership on the path id, or membership on the document linked by
-    // [careGroupId], must grant access.
+    // Match Firestore: members live on the "team" doc; the linked doc holds
+    // team-level fields. Direct membership on the path id, or membership on the document
+    // linked by [careGroupId], must grant access.
     function isMemberOfCareGroupFromStorage(careGroupDocId) {
       return request.auth != null
         && (
@@ -38,6 +38,14 @@ service firebase.storage {
       allow read: if isMemberOfCareGroupFromStorage(careGroupId);
       allow create, update: if isMemberOfCareGroupFromStorage(careGroupId)
         && request.resource.size < 8 * 1024 * 1024;
+      allow delete: if isMemberOfCareGroupFromStorage(careGroupId);
+    }
+
+    // Expense receipts: careGroups/{careGroupId}/expense_receipts/{expenseId}/{fileName}
+    match /careGroups/{careGroupId}/expense_receipts/{expenseId}/{fileName} {
+      allow read: if isMemberOfCareGroupFromStorage(careGroupId);
+      allow create, update: if isMemberOfCareGroupFromStorage(careGroupId)
+        && request.resource.size < 10 * 1024 * 1024;
       allow delete: if isMemberOfCareGroupFromStorage(careGroupId);
     }
 

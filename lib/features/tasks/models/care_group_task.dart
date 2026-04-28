@@ -1,6 +1,6 @@
 import "package:cloud_firestore/cloud_firestore.dart";
 
-/// Maps `careGroups/{hid}/tasks/{taskId}` (rules require title, status, createdBy, createdAt).
+/// Maps `careGroups/{careGroupId}/tasks/{taskId}` (rules require title, status, createdBy, createdAt).
 final class CareGroupTask {
   const CareGroupTask({
     required this.id,

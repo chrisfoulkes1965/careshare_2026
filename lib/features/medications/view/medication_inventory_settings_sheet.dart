@@ -5,16 +5,16 @@ import "../models/medication_care_group_settings.dart";
 import "../repository/medication_care_group_settings_repository.dart";
 
 class MedicationInventorySettingsSheet extends StatefulWidget {
-  const MedicationInventorySettingsSheet({super.key, required this.householdId});
+  const MedicationInventorySettingsSheet({super.key, required this.careGroupId});
 
-  final String householdId;
+  final String careGroupId;
 
-  static Future<void> show(BuildContext context, {required String householdId}) {
+  static Future<void> show(BuildContext context, {required String careGroupId}) {
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      builder: (ctx) => MedicationInventorySettingsSheet(householdId: householdId),
+      builder: (ctx) => MedicationInventorySettingsSheet(careGroupId: careGroupId),
     );
   }
 
@@ -38,7 +38,7 @@ class _MedicationInventorySettingsSheetState extends State<MedicationInventorySe
   Future<void> _load() async {
     final repo = context.read<MedicationCareGroupSettingsRepository>();
     try {
-      final st = await repo.getSettings(widget.householdId);
+      final st = await repo.getSettings(widget.careGroupId);
       if (!mounted) {
         return;
       }
@@ -127,7 +127,7 @@ class _MedicationInventorySettingsSheetState extends State<MedicationInventorySe
                     });
                     try {
                       await context.read<MedicationCareGroupSettingsRepository>().saveSettings(
-                            widget.householdId,
+                            widget.careGroupId,
                             MedicationInventoryCareGroupSettings(
                               reorderLeadDays: la.clamp(0, 90),
                               reorderWindowDays: wi.clamp(0, 180),

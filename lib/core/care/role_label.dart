@@ -1,3 +1,12 @@
+/// Roles the principal can assign on the members screen (order = display order).
+const List<String> kAssignableCareGroupRoles = [
+  "principal_carer",
+  "carer",
+  "financial_manager",
+  "power_of_attorney",
+  "receives_care",
+];
+
 /// Human-friendly label for a role string stored in Firestore.
 String careGroupRoleLabel(String role) {
   return switch (role) {

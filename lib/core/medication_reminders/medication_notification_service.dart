@@ -7,9 +7,10 @@ import "package:timezone/data/latest_all.dart" as tz_data;
 import "package:timezone/timezone.dart" as tz;
 
 import "medication_dose_group_planner.dart";
-import "../../features/medications/models/household_medication.dart";
+import "../../features/medications/models/care_group_medication.dart";
 
 /// Grouped local reminders; tap opens a confirmation flow (set [setDosePayloadHandler] from [app.dart]).
+/// Foreground FCM for chat also uses the same plugin (set [setChatPayloadHandler]).
 final class MedicationNotificationService {
   MedicationNotificationService._();
   static final MedicationNotificationService instance = MedicationNotificationService._();
@@ -20,9 +21,13 @@ final class MedicationNotificationService {
   List<CareGroupMedication> _lastMeds = const [];
   void Function(String payload)? _dosePayloadHandler;
   final List<String> _deferredDosePayloads = [];
+  void Function(String payload)? _chatPayloadHandler;
+  final List<String> _deferredChatPayloads = [];
 
   static const String _channelId = "careshare_medications";
   static const String _channelName = "Medication reminders";
+  static const String _chatChannelId = "careshare_chat";
+  static const String _chatChannelName = "Group chat";
 
   void setDosePayloadHandler(void Function(String payload)? handler) {
     _dosePayloadHandler = handler;
@@ -32,14 +37,32 @@ final class MedicationNotificationService {
     _deferredDosePayloads.clear();
   }
 
+  void setChatPayloadHandler(void Function(String payload)? handler) {
+    _chatPayloadHandler = handler;
+    for (final p in _deferredChatPayloads) {
+      handler?.call(p);
+    }
+    _deferredChatPayloads.clear();
+  }
+
   void _handlePayload(String? p) {
-    if (p == null || !p.startsWith("dose|")) {
+    if (p == null) {
       return;
     }
-    if (_dosePayloadHandler != null) {
-      _dosePayloadHandler!(p);
-    } else {
-      _deferredDosePayloads.add(p);
+    if (p.startsWith("dose|")) {
+      if (_dosePayloadHandler != null) {
+        _dosePayloadHandler!(p);
+      } else {
+        _deferredDosePayloads.add(p);
+      }
+      return;
+    }
+    if (p.startsWith("chat|")) {
+      if (_chatPayloadHandler != null) {
+        _chatPayloadHandler!(p);
+      } else {
+        _deferredChatPayloads.add(p);
+      }
     }
   }
 
@@ -82,9 +105,17 @@ final class MedicationNotificationService {
     );
 
     if (defaultTargetPlatform == TargetPlatform.android) {
-      await _plugin
-          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-          ?.requestNotificationsPermission();
+      final android = _plugin
+          .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+      await android?.createNotificationChannel(
+        const AndroidNotificationChannel(
+          _chatChannelId,
+          _chatChannelName,
+          description: "New messages in care team channels (foreground banner).",
+          importance: Importance.high,
+        ),
+      );
+      await android?.requestNotificationsPermission();
     } else if (defaultTargetPlatform == TargetPlatform.iOS) {
       await _plugin
           .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
@@ -108,9 +139,9 @@ final class MedicationNotificationService {
       return;
     }
     if (defaultTargetPlatform == TargetPlatform.windows) {
-      final hid = _lastCareGroupId;
-      if (hid != null && _lastMeds.isNotEmpty) {
-        await syncMedications(hid, _lastMeds);
+      final careGroupId = _lastCareGroupId;
+      if (careGroupId != null && _lastMeds.isNotEmpty) {
+        await syncMedications(careGroupId, _lastMeds);
       }
     }
   }
@@ -194,6 +225,49 @@ final class MedicationNotificationService {
       } catch (e, st) {
         debugPrint("zonedSchedule dose: $e\n$st");
       }
+    }
+  }
+
+  /// Foreground FCM: system notification is not shown; we mirror it here.
+  Future<void> showChatForegroundNotification({
+    required String title,
+    required String body,
+    required String payload,
+  }) async {
+    if (kIsWeb || !_ready) {
+      return;
+    }
+    final id = (DateTime.now().millisecondsSinceEpoch % 100000) + 900000;
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _chatChannelId,
+        _chatChannelName,
+        channelDescription: "New messages in care team channels.",
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+      iOS: DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      ),
+      macOS: DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      ),
+      windows: WindowsNotificationDetails(),
+    );
+    try {
+      await _plugin.show(
+        id: id,
+        title: title,
+        body: body,
+        notificationDetails: details,
+        payload: payload,
+      );
+    } catch (e, st) {
+      debugPrint("showChatForegroundNotification: $e\n$st");
     }
   }
 }

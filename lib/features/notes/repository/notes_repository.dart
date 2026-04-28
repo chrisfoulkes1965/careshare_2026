@@ -1,7 +1,7 @@
-﻿import "package:cloud_firestore/cloud_firestore.dart";
+import "package:cloud_firestore/cloud_firestore.dart";
 import "package:firebase_auth/firebase_auth.dart";
 
-import "../models/household_note.dart";
+import "../models/care_group_note.dart";
 
 class NotesRepository {
   NotesRepository({required bool firebaseReady}) : _firebaseReady = firebaseReady;

@@ -1,8 +1,12 @@
+import "dart:async";
+
 import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
 
 import "../../../core/constants/app_constants.dart";
+import "../../../core/invite/pending_invitation_store.dart";
+import "../../../core/theme/app_assets.dart";
 import "../../../core/theme/app_colors.dart";
 import "../bloc/auth_bloc.dart";
 import "../bloc/auth_event.dart";
@@ -21,6 +25,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _confirmController = TextEditingController();
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
+  var _prefilledRouteEmail = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_prefilledRouteEmail) {
+      return;
+    }
+    final q = GoRouterState.of(context).uri.queryParameters;
+    final e = q["email"]?.trim();
+    if (e != null && e.isNotEmpty) {
+      _emailController.text = e;
+    }
+    unawaited(PendingInvitationStore.saveFromQueryIfPresent(q["invite"]));
+    _prefilledRouteEmail = true;
+  }
 
   @override
   void dispose() {
@@ -46,6 +66,12 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    Image.asset(
+                      AppAssets.logo100,
+                      height: 100,
+                      filterQuality: FilterQuality.medium,
+                    ),
+                    const SizedBox(height: 16),
                     Text(
                       AppConstants.appName,
                       textAlign: TextAlign.center,

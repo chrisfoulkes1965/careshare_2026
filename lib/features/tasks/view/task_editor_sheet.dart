@@ -8,7 +8,7 @@ import "package:url_launcher/url_launcher.dart";
 import "../../members/models/care_group_member.dart";
 import "../../members/repository/members_repository.dart";
 import "../cubit/tasks_cubit.dart";
-import "../models/household_task.dart";
+import "../models/care_group_task.dart";
 
 const int _kMaxAttachments = 5;
 const int _kMaxFileBytes = 10 * 1024 * 1024;

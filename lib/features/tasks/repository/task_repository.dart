@@ -1,11 +1,11 @@
-﻿import "dart:async";
+import "dart:async";
 
 import "package:cloud_firestore/cloud_firestore.dart";
 import "package:file_picker/file_picker.dart";
 import "package:firebase_auth/firebase_auth.dart";
 import "package:firebase_storage/firebase_storage.dart";
 
-import "../models/household_task.dart";
+import "../models/care_group_task.dart";
 import "platform_file_read_io.dart" if (dart.library.html) "platform_file_read_web.dart" as platform_file_read;
 
 class TaskRepository {
@@ -16,6 +16,8 @@ class TaskRepository {
   static const int _maxAttachmentCount = 5;
   static const int _maxBytes = 10 * 1024 * 1024;
   static const Duration _uploadTimeout = Duration(minutes: 2);
+  static const Duration _writeTimeout = Duration(seconds: 60);
+  static const Duration _downloadUrlTimeout = Duration(seconds: 45);
 
   bool get isAvailable => _firebaseReady;
 
@@ -72,10 +74,10 @@ class TaskRepository {
       );
       urls.add(
         await ref.getDownloadURL().timeout(
-          const Duration(seconds: 45),
+          _downloadUrlTimeout,
           onTimeout: () => throw TimeoutException(
             "Could not get download link after upload.",
-            const Duration(seconds: 45),
+            _downloadUrlTimeout,
           ),
         ),
       );
@@ -88,9 +90,18 @@ class TaskRepository {
     if (urls.isEmpty) {
       return;
     }
-    await _tasks(careGroupId).doc(taskId).update({
-      "attachmentUrls": FieldValue.arrayUnion(urls),
-    });
+    await _tasks(careGroupId)
+        .doc(taskId)
+        .update({
+          "attachmentUrls": FieldValue.arrayUnion(urls),
+        })
+        .timeout(
+          _writeTimeout,
+          onTimeout: () => throw TimeoutException(
+            "Could not update task attachments. Check your connection and try again.",
+            _writeTimeout,
+          ),
+        );
   }
 
   /// Creates a task and uploads [attachments] into Storage, then appends [attachmentUrls].
@@ -142,7 +153,15 @@ class TaskRepository {
       data["attachmentUrls"] = <String>[];
     }
 
-    final ref = await _tasks(careGroupId).add(data);
+    final ref = await _tasks(careGroupId)
+        .add(data)
+        .timeout(
+          _writeTimeout,
+          onTimeout: () => throw TimeoutException(
+            "Could not create the task in time. Check your connection and try again.",
+            _writeTimeout,
+          ),
+        );
     final id = ref.id;
     if (attachments.isNotEmpty) {
       await _uploadAndMergeAttachmentUrls(
@@ -196,7 +215,16 @@ class TaskRepository {
       patch["assignedTo"] = FieldValue.delete();
     }
 
-    await _tasks(careGroupId).doc(taskId).update(patch);
+    await _tasks(careGroupId)
+        .doc(taskId)
+        .update(patch)
+        .timeout(
+          _writeTimeout,
+          onTimeout: () => throw TimeoutException(
+            "Could not update the task in time. Check your connection and try again.",
+            _writeTimeout,
+          ),
+        );
     if (newAttachments.isNotEmpty) {
       await _uploadAndMergeAttachmentUrls(
         careGroupId: careGroupId,
@@ -214,9 +242,18 @@ class TaskRepository {
     required bool done,
   }) async {
     if (!_firebaseReady) return;
-    await _tasks(careGroupId).doc(taskId).update({
-      "status": done ? "done" : "open",
-    });
+    await _tasks(careGroupId)
+        .doc(taskId)
+        .update({
+          "status": done ? "done" : "open",
+        })
+        .timeout(
+          _writeTimeout,
+          onTimeout: () => throw TimeoutException(
+            "Could not update task status. Check your connection and try again.",
+            _writeTimeout,
+          ),
+        );
   }
 
   Future<void> deleteTask({
@@ -224,6 +261,15 @@ class TaskRepository {
     required String taskId,
   }) async {
     if (!_firebaseReady) return;
-    await _tasks(careGroupId).doc(taskId).delete();
+    await _tasks(careGroupId)
+        .doc(taskId)
+        .delete()
+        .timeout(
+          _writeTimeout,
+          onTimeout: () => throw TimeoutException(
+            "Could not delete the task. Check your connection and try again.",
+            _writeTimeout,
+          ),
+        );
   }
 }

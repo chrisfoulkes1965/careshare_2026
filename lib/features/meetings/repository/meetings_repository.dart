@@ -1,7 +1,7 @@
-﻿import "package:cloud_firestore/cloud_firestore.dart";
+import "package:cloud_firestore/cloud_firestore.dart";
 import "package:firebase_auth/firebase_auth.dart";
 
-import "../models/household_meeting.dart";
+import "../models/care_group_meeting.dart";
 
 class MeetingsRepository {
   MeetingsRepository({required bool firebaseReady}) : _firebaseReady = firebaseReady;

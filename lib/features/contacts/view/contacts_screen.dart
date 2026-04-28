@@ -8,7 +8,7 @@ import "../../profile/profile_cubit.dart";
 import "../../profile/profile_state.dart";
 import "../cubit/contacts_cubit.dart";
 import "../cubit/contacts_state.dart";
-import "../models/household_contact.dart";
+import "../models/care_group_contact.dart";
 import "../repository/contacts_repository.dart";
 
 class ContactsScreen extends StatelessWidget {

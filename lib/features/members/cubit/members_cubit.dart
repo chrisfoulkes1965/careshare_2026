@@ -10,11 +10,15 @@ final class MembersCubit extends Cubit<MembersState> {
   MembersCubit({
     required MembersRepository repository,
     required this.careGroupId,
+    this.dataCareGroupDocId,
   })  : _repository = repository,
         super(const MembersInitial());
 
   final MembersRepository _repository;
   final String careGroupId;
+
+  /// Home document id for [recipientProfiles] (often same as [careGroupId]).
+  final String? dataCareGroupDocId;
 
   StreamSubscription<List<CareGroupMember>>? _sub;
 
@@ -25,7 +29,9 @@ final class MembersCubit extends Cubit<MembersState> {
     }
     emit(const MembersLoading());
     unawaited(_sub?.cancel());
-    _sub = _repository.watchMembers(careGroupId).listen(
+    _sub = _repository
+        .watchMembersOrRoster(careGroupId, dataCareGroupDocId)
+        .listen(
       (list) {
         if (list.isEmpty) {
           emit(const MembersEmpty());

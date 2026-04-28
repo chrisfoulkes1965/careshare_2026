@@ -3,7 +3,7 @@
 import "package:file_picker/file_picker.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 
-import "../models/household_task.dart";
+import "../models/care_group_task.dart";
 import "../repository/task_repository.dart";
 import "tasks_state.dart";
 

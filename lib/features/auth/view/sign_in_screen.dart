@@ -1,9 +1,13 @@
+import "dart:async";
+
 import "package:firebase_auth/firebase_auth.dart";
 import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
 
 import "../../../core/constants/app_constants.dart";
+import "../../../core/invite/pending_invitation_store.dart";
+import "../../../core/theme/app_assets.dart";
 import "../../../core/theme/app_colors.dart";
 import "../bloc/auth_bloc.dart";
 import "../bloc/auth_event.dart";
@@ -22,6 +26,22 @@ class _SignInScreenState extends State<SignInScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  var _prefilledRouteEmail = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_prefilledRouteEmail) {
+      return;
+    }
+    final q = GoRouterState.of(context).uri.queryParameters;
+    final e = q["email"]?.trim();
+    if (e != null && e.isNotEmpty) {
+      _emailController.text = e;
+    }
+    unawaited(PendingInvitationStore.saveFromQueryIfPresent(q["invite"]));
+    _prefilledRouteEmail = true;
+  }
 
   @override
   void dispose() {
@@ -70,6 +90,12 @@ class _SignInScreenState extends State<SignInScreen> {
                               mainAxisSize: MainAxisSize.min,
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
+                                Image.asset(
+                                  AppAssets.logo100,
+                                  height: 100,
+                                  filterQuality: FilterQuality.medium,
+                                ),
+                                const SizedBox(height: 16),
                                 Text(
                                   AppConstants.appName,
                                   textAlign: TextAlign.center,
@@ -162,7 +188,33 @@ class _SignInScreenState extends State<SignInScreen> {
                                 const SizedBox(height: 8),
                                 OutlinedButton(
                                   onPressed: firebaseReady
-                                      ? () => context.push("/register")
+                                      ? () {
+                                          final qp = GoRouterState.of(context)
+                                              .uri
+                                              .queryParameters;
+                                          final invite =
+                                              qp["invite"]?.trim();
+                                          final e = _emailController.text
+                                              .trim();
+                                          if (invite != null &&
+                                              invite.isNotEmpty) {
+                                            if (e.isNotEmpty) {
+                                              context.push(
+                                                "/register?email=${Uri.encodeComponent(e)}&invite=${Uri.encodeComponent(invite)}",
+                                              );
+                                            } else {
+                                              context.push(
+                                                "/register?invite=${Uri.encodeComponent(invite)}",
+                                              );
+                                            }
+                                          } else if (e.isNotEmpty) {
+                                            context.push(
+                                              "/register?email=${Uri.encodeComponent(e)}",
+                                            );
+                                          } else {
+                                            context.push("/register");
+                                          }
+                                        }
                                       : null,
                                   child: const Text("Create account"),
                                 ),

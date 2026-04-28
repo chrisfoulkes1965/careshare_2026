@@ -1,8 +1,8 @@
-﻿import "dart:async";
+import "dart:async";
 
 import "package:flutter_bloc/flutter_bloc.dart";
 
-import "../models/household_note.dart";
+import "../models/care_group_note.dart";
 import "../repository/notes_repository.dart";
 import "notes_state.dart";
 

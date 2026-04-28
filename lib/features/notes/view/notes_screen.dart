@@ -7,7 +7,7 @@ import "../../profile/profile_cubit.dart";
 import "../../profile/profile_state.dart";
 import "../cubit/notes_cubit.dart";
 import "../cubit/notes_state.dart";
-import "../models/household_note.dart";
+import "../models/care_group_note.dart";
 import "../repository/notes_repository.dart";
 
 class NotesScreen extends StatelessWidget {

@@ -6,16 +6,20 @@ import "package:flutter_bloc/flutter_bloc.dart";
 import "../auth/bloc/auth_bloc.dart";
 import "../auth/bloc/auth_state.dart";
 import "../care_group/models/care_group_option.dart";
+import "../invitations/repository/invitation_repository.dart";
 import "../user/models/user_profile.dart";
 import "../user/repository/user_repository.dart";
+import "../../core/invite/pending_invitation_store.dart";
 import "profile_state.dart";
 
 final class ProfileCubit extends Cubit<ProfileState> {
   ProfileCubit({
     required AuthBloc authBloc,
     required UserRepository userRepository,
+    required InvitationRepository invitationRepository,
   })  : _authBloc = authBloc,
         _userRepository = userRepository,
+        _invitationRepository = invitationRepository,
         super(const ProfileAnonymous()) {
     _authSub = _authBloc.stream.listen(_onAuthChanged);
     _onAuthChanged(_authBloc.state);
@@ -23,12 +27,55 @@ final class ProfileCubit extends Cubit<ProfileState> {
 
   final AuthBloc _authBloc;
   final UserRepository _userRepository;
+  final InvitationRepository _invitationRepository;
   late final StreamSubscription<AuthState> _authSub;
 
   Future<void> refresh() async {
     final user = _authBloc.state.user;
     if (user != null) {
       await _load(user);
+    }
+  }
+
+  /// Updates `careGroups/{careGroupId}.name` and reloads profile.
+  Future<void> updateCareGroupName(String careGroupId, String name) async {
+    final user = _authBloc.state.user;
+    if (user == null) return;
+    final previous = state;
+    try {
+      await _userRepository.updateCareGroupName(
+        careGroupId: careGroupId,
+        name: name,
+      );
+      await _load(user);
+    } catch (e) {
+      if (previous is ProfileReady) {
+        emit(previous);
+      } else {
+        emit(ProfileError(e.toString()));
+      }
+      rethrow;
+    }
+  }
+
+  /// Updates `careGroups/{careGroupId}.themeColor` (or clears it) and reloads profile.
+  Future<void> setCareGroupThemeColor(String careGroupId, int? argb) async {
+    final user = _authBloc.state.user;
+    if (user == null) return;
+    final previous = state;
+    try {
+      await _userRepository.setCareGroupThemeColor(
+        careGroupId: careGroupId,
+        argb: argb,
+      );
+      await _load(user);
+    } catch (e) {
+      if (previous is ProfileReady) {
+        emit(previous);
+      } else {
+        emit(ProfileError(e.toString()));
+      }
+      rethrow;
     }
   }
 
@@ -42,7 +89,6 @@ final class ProfileCubit extends Cubit<ProfileState> {
       await _userRepository.setActiveCareGroup(
         uid: user.uid,
         careGroupId: option.careGroupId,
-        householdId: option.householdId,
       );
       await _load(user);
     } catch (e) {
@@ -91,26 +137,54 @@ final class ProfileCubit extends Cubit<ProfileState> {
       await _userRepository
           .ensureUserDocument(user)
           .timeout(const Duration(seconds: 12));
-      final fetched = await _userRepository
+      var profile = await _userRepository
           .fetchProfile(user.uid)
           .timeout(const Duration(seconds: 12));
-      if (fetched != null) {
-        await _emitWithCareGroupOptions(user, fetched);
-        return;
-      }
-
-      final fallback = UserProfile(
+      profile ??= UserProfile(
         uid: user.uid,
         email: user.email ?? "",
         displayName: user.displayName ?? _emailLocal(user.email),
         photoUrl: user.photoURL,
       );
-      await _emitWithCareGroupOptions(user, fallback);
+      profile = await _maybeRedeemInvitationFromEmailLink(user, profile);
+      await _emitWithCareGroupOptions(user, profile);
     } on TimeoutException {
       emit(const ProfileError("Profile load timed out. Please retry."));
     } catch (e) {
       emit(ProfileError(e.toString()));
     }
+  }
+
+  Future<UserProfile> _maybeRedeemInvitationFromEmailLink(
+    User user,
+    UserProfile profile,
+  ) async {
+    if (!_invitationRepository.isAvailable) {
+      return profile;
+    }
+    final id = await PendingInvitationStore.read();
+    if (id == null) {
+      return profile;
+    }
+    try {
+      final careGroupId =
+          await _invitationRepository.redeemInvitationForSignedInUser(
+        invitationId: id,
+        displayName: profile.displayName,
+      );
+      await PendingInvitationStore.clear();
+      if (careGroupId != null && careGroupId.isNotEmpty) {
+        await _userRepository.setActiveCareGroup(
+          uid: user.uid,
+          careGroupId: careGroupId,
+        );
+        final updated = await _userRepository.fetchProfile(user.uid);
+        return updated ?? profile.copyWith(activeCareGroupId: careGroupId);
+      }
+    } catch (_) {
+      await PendingInvitationStore.clear();
+    }
+    return profile;
   }
 
   Future<void> _emitWithCareGroupOptions(User user, UserProfile profile) async {
@@ -126,13 +200,39 @@ final class ProfileCubit extends Cubit<ProfileState> {
       options = const [];
     }
 
+    // The collection-group "members" query can return [] until indexes deploy, or if it
+    // errors — but [UserProfile] may already have [activeCareGroupId] from the wizard.
+    if (p.activeCareGroupId != null && p.activeCareGroupId!.isNotEmpty) {
+      final hasTeam = options.any((o) => o.careGroupId == p.activeCareGroupId);
+      if (!hasTeam) {
+        try {
+          final repair = await _userRepository
+              .fetchCareGroupOptionForActiveProfile(
+            uid: user.uid,
+            careGroupId: p.activeCareGroupId!,
+          )
+              .timeout(const Duration(seconds: 12));
+          if (repair != null) {
+            options = [...options, repair]..sort(
+                (a, b) => a.displayName
+                    .toLowerCase()
+                    .compareTo(b.displayName.toLowerCase()),
+              );
+          }
+        } on TimeoutException {
+          // keep options as-is
+        } catch (_) {
+          // keep options as-is
+        }
+      }
+    }
+
     if (options.length == 1) {
       final only = options.first;
-      if (p.activeCareGroupId != only.careGroupId || p.activeHouseholdId != only.householdId) {
+      if (p.activeCareGroupId != only.careGroupId) {
         await _userRepository.setActiveCareGroup(
           uid: user.uid,
           careGroupId: only.careGroupId,
-          householdId: only.householdId,
         );
         final again = await _userRepository.fetchProfile(user.uid);
         if (again != null) {
@@ -153,6 +253,13 @@ final class ProfileCubit extends Cubit<ProfileState> {
         careGroupOptions: options,
         requiresCareGroupSelection: requires,
       ),
+    );
+
+    // Mirror profile photo / preset avatar into each `members/{uid}` doc (readable by the group).
+    unawaited(
+      _userRepository
+          .syncMemberRosterFromProfile(uid: user.uid, profile: p)
+          .catchError((_) {}),
     );
   }
 

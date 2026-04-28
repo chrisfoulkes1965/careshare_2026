@@ -2,7 +2,7 @@ import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
 
-import "../models/household_medication.dart";
+import "../models/care_group_medication.dart";
 import "../repository/medications_repository.dart";
 import "medication_dose_route_args.dart";
 

@@ -24,7 +24,7 @@ class JournalScreen extends StatelessWidget {
             body: Center(child: Text("Loading your profile…")),
           );
         }
-        final cg = state.profile.activeCareGroupId;
+        final cg = state.activeCareGroupDataId;
         if (cg == null || cg.isEmpty) {
           return Scaffold(
             appBar: AppBar(title: const Text("Journal")),

@@ -1,4 +1,4 @@
-import "../models/household_medication.dart";
+import "../models/care_group_medication.dart";
 import "../models/medication_care_group_settings.dart";
 
 List<CareGroupMedication> medicationsToReorderInWindow(

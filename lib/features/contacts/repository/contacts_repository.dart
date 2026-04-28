@@ -1,7 +1,7 @@
-﻿import "package:cloud_firestore/cloud_firestore.dart";
+import "package:cloud_firestore/cloud_firestore.dart";
 import "package:firebase_auth/firebase_auth.dart";
 
-import "../models/household_contact.dart";
+import "../models/care_group_contact.dart";
 
 class ContactsRepository {
   ContactsRepository({required bool firebaseReady}) : _firebaseReady = firebaseReady;

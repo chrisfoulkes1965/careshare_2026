@@ -1,11 +1,11 @@
-﻿import "dart:async";
+import "dart:async";
 
 import "package:cloud_firestore/cloud_firestore.dart";
 import "package:file_picker/file_picker.dart";
 import "package:firebase_auth/firebase_auth.dart";
 import "package:firebase_storage/firebase_storage.dart";
 
-import "../models/household_medication.dart";
+import "../models/care_group_medication.dart";
 import "../../tasks/repository/platform_file_read_io.dart" if (dart.library.html) "../../tasks/repository/platform_file_read_web.dart" as platform_file_read;
 
 Map<String, dynamic> _scheduleFields({
@@ -84,6 +84,33 @@ class MedicationsRepository {
     return n.length > 200 ? n.substring(0, 200) : n;
   }
 
+  /// Reuses the same [photoUrl] on other medication docs (one upload, many references).
+  Future<void> _applyPhotoUrlToMedications({
+    required String careGroupId,
+    required String photoUrl,
+    required List<String> medicationIds,
+  }) async {
+    final unique = medicationIds.toSet().toList();
+    if (unique.isEmpty) {
+      return;
+    }
+    const chunk = 400;
+    for (var i = 0; i < unique.length; i += chunk) {
+      final batch = FirebaseFirestore.instance.batch();
+      final slice = unique.sublist(
+        i,
+        i + chunk > unique.length ? unique.length : i + chunk,
+      );
+      for (final id in slice) {
+        batch.update(
+          _medications(careGroupId).doc(id),
+          {"photoUrl": photoUrl},
+        );
+      }
+      await batch.commit();
+    }
+  }
+
   Future<String> _uploadPhotoIfAny({
     required String careGroupId,
     required String medicationId,
@@ -121,6 +148,7 @@ class MedicationsRepository {
     List<int> scheduleMonthDays = const [],
     int? quantityOnHand,
     PlatformFile? image,
+    List<String> alsoApplyPhotoToMedicationIds = const [],
   }) {
     if (!_firebaseReady) {
       return Future.error(StateError("Firebase is not available."));
@@ -138,6 +166,7 @@ class MedicationsRepository {
       scheduleMonthDays: scheduleMonthDays,
       quantityOnHand: quantityOnHand,
       image: image,
+      alsoApplyPhotoToMedicationIds: alsoApplyPhotoToMedicationIds,
     ));
   }
 
@@ -154,6 +183,7 @@ class MedicationsRepository {
     List<int> scheduleMonthDays = const [],
     int? quantityOnHand,
     PlatformFile? image,
+    List<String> alsoApplyPhotoToMedicationIds = const [],
   }) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
@@ -191,6 +221,17 @@ class MedicationsRepository {
       );
       if (url.isNotEmpty) {
         await ref.update({"photoUrl": url});
+        final others = alsoApplyPhotoToMedicationIds
+            .where((oid) => oid.isNotEmpty && oid != id)
+            .toSet()
+            .toList();
+        if (others.isNotEmpty) {
+          await _applyPhotoUrlToMedications(
+            careGroupId: careGroupId,
+            photoUrl: url,
+            medicationIds: others,
+          );
+        }
       } else {
         await ref.update({"photoUrl": FieldValue.delete()});
       }
@@ -213,6 +254,7 @@ class MedicationsRepository {
     bool clearQuantity = false,
     bool clearPhoto = false,
     PlatformFile? newImage,
+    List<String> alsoApplyPhotoToMedicationIds = const [],
   }) {
     if (!_firebaseReady) {
       return Future.error(StateError("Firebase is not available."));
@@ -233,6 +275,7 @@ class MedicationsRepository {
       clearQuantity: clearQuantity,
       clearPhoto: clearPhoto,
       newImage: newImage,
+      alsoApplyPhotoToMedicationIds: alsoApplyPhotoToMedicationIds,
     ));
   }
 
@@ -252,6 +295,7 @@ class MedicationsRepository {
     bool clearQuantity = false,
     bool clearPhoto = false,
     PlatformFile? newImage,
+    List<String> alsoApplyPhotoToMedicationIds = const [],
   }) async {
     final t = name.trim();
     if (t.isEmpty) {
@@ -287,6 +331,17 @@ class MedicationsRepository {
       );
       if (url.isNotEmpty) {
         await _medications(careGroupId).doc(medicationId).update({"photoUrl": url});
+        final others = alsoApplyPhotoToMedicationIds
+            .where((oid) => oid.isNotEmpty && oid != medicationId)
+            .toSet()
+            .toList();
+        if (others.isNotEmpty) {
+          await _applyPhotoUrlToMedications(
+            careGroupId: careGroupId,
+            photoUrl: url,
+            medicationIds: others,
+          );
+        }
       }
     }
   }

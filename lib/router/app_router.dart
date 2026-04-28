@@ -9,7 +9,11 @@ import "../features/care_pathway/view/pathways_screen.dart";
 import "../features/home/view/coming_soon_screen.dart";
 import "../features/care_group/view/care_group_select_screen.dart";
 import "../features/home/view/home_screen.dart";
+import "../features/calendar/view/calendar_screen.dart";
+import "../features/chat/view/channel_chat_screen.dart";
+import "../features/chat/view/chat_channels_screen.dart";
 import "../features/contacts/view/contacts_screen.dart";
+import "../features/expenses/view/expenses_screen.dart";
 import "../features/invitations/view/invitations_screen.dart";
 import "../features/journal/view/journal_screen.dart";
 import "../features/medications/view/medication_dose_confirm_screen.dart";
@@ -18,6 +22,7 @@ import "../features/meetings/view/meetings_screen.dart";
 import "../features/members/view/members_screen.dart";
 import "../features/notes/view/notes_screen.dart";
 import "../features/tasks/view/tasks_screen.dart";
+import "../features/user/view/care_group_settings_screen.dart";
 import "../features/user/view/user_settings_care_groups_screen.dart";
 import "../features/user/view/user_settings_profile_screen.dart";
 import "../features/user/view/user_settings_security_screen.dart";
@@ -33,6 +38,11 @@ abstract final class AppRouteNames {
   static const setup = "setup";
   static const comingSoon = "comingSoon";
   static const tasks = "tasks";
+  static const calendar = "calendar";
+  static const chat = "chat";
+  static const chatChannel = "chatChannel";
+  static const expenses = "expenses";
+  static const careGroupSettings = "careGroupSettings";
   static const pathways = "pathways";
   static const invitations = "invitations";
   static const notes = "notes";
@@ -160,6 +170,35 @@ abstract final class AppRouter {
           },
         ),
         GoRoute(
+          path: "/calendar",
+          name: AppRouteNames.calendar,
+          builder: (context, state) => const CalendarScreen(),
+        ),
+        GoRoute(
+          path: "/expenses",
+          name: AppRouteNames.expenses,
+          builder: (context, state) => const ExpensesScreen(),
+        ),
+        GoRoute(
+          path: "/chat",
+          name: AppRouteNames.chat,
+          builder: (context, state) => const ChatChannelsScreen(),
+          routes: [
+            GoRoute(
+              path: ":channelId",
+              name: AppRouteNames.chatChannel,
+              builder: (context, state) {
+                final id = state.pathParameters["channelId"]!;
+                final cg = state.uri.queryParameters["careGroupId"];
+                return ChannelChatScreen(
+                  channelId: id,
+                  careGroupIdFromRoute: cg,
+                );
+              },
+            ),
+          ],
+        ),
+        GoRoute(
           path: "/tasks",
           name: AppRouteNames.tasks,
           builder: (context, state) => const TasksScreen(),
@@ -208,6 +247,11 @@ abstract final class AppRouter {
           path: "/members",
           name: AppRouteNames.members,
           builder: (context, state) => const MembersScreen(),
+        ),
+        GoRoute(
+          path: "/user-settings/care-group",
+          name: AppRouteNames.careGroupSettings,
+          builder: (context, state) => const CareGroupSettingsScreen(),
         ),
         GoRoute(
           path: "/user-settings/profile",

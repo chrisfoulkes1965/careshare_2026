@@ -43,15 +43,26 @@ class UserSettingsCareGroupsScreen extends StatelessWidget {
               Text(
                 "You appear in the member list of each of these care teams. "
                 "Roles are how this home can tell what you are allowed to do. "
-                "To change someone else’s role, a principal or organiser can update members.",
+                "To change someone else’s role, a principal or organiser can update members. "
+                "Name, theme colour, and members for the active care group: open care group on home, or the button below.",
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
               ),
+              const SizedBox(height: 12),
+              FilledButton.tonal(
+                onPressed: () {
+                  if (context.mounted) {
+                    context.push("/user-settings/care-group");
+                  }
+                },
+                child: const Text("Active care group settings…"),
+              ),
               const SizedBox(height: 16),
               if (options.isEmpty)
                 const Text(
-                    "No care groups were found. Complete setup or accept an invite.")
+                  "No care groups were found. Complete setup or accept an invite.",
+                )
               else
                 ...options.map(
                   (CareGroupOption o) => _CareGroupRow(

@@ -1,6 +1,6 @@
 import "package:cloud_firestore/cloud_firestore.dart";
 
-/// `careGroups/{hid}/meetings/{id}` — care coordination meetings (agenda, notes).
+/// `careGroups/{careGroupId}/meetings/{id}` — care coordination meetings (agenda, notes).
 final class CareGroupMeeting {
   const CareGroupMeeting({
     required this.id,

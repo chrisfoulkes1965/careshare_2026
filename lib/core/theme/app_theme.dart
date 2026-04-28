@@ -9,10 +9,16 @@ abstract final class AppTheme {
       colorScheme: ColorScheme.fromSeed(
         seedColor: AppColors.tealPrimary,
         primary: AppColors.tealPrimary,
+        onPrimary: Colors.white,
+        primaryContainer: AppColors.tealLight,
+        onPrimaryContainer: AppColors.tealDark,
         surface: Colors.white,
         brightness: Brightness.light,
       ),
       scaffoldBackgroundColor: AppColors.grey50,
+      progressIndicatorTheme: const ProgressIndicatorThemeData(
+        color: AppColors.tealPrimary,
+      ),
       appBarTheme: const AppBarTheme(
         centerTitle: true,
         backgroundColor: AppColors.tealPrimary,

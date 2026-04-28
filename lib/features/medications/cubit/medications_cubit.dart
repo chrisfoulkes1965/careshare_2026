@@ -1,10 +1,10 @@
-﻿import "dart:async";
+import "dart:async";
 
 import "package:file_picker/file_picker.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 
 import "../../../core/medication_reminders/medication_notification_service.dart";
-import "../models/household_medication.dart";
+import "../models/care_group_medication.dart";
 import "../repository/medications_repository.dart";
 import "medications_state.dart";
 
@@ -56,6 +56,7 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
     List<int> scheduleMonthDays = const [],
     int? quantityOnHand,
     PlatformFile? image,
+    List<String> alsoApplyPhotoToMedicationIds = const [],
   }) {
     return _repository.addMedication(
       careGroupId: careGroupId,
@@ -70,6 +71,7 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
       scheduleMonthDays: scheduleMonthDays,
       quantityOnHand: quantityOnHand,
       image: image,
+      alsoApplyPhotoToMedicationIds: alsoApplyPhotoToMedicationIds,
     );
   }
 
@@ -88,6 +90,7 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
     bool clearQuantity = false,
     bool clearPhoto = false,
     PlatformFile? newImage,
+    List<String> alsoApplyPhotoToMedicationIds = const [],
   }) {
     return _repository.updateMedication(
       careGroupId: careGroupId,
@@ -105,6 +108,7 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
       clearQuantity: clearQuantity,
       clearPhoto: clearPhoto,
       newImage: newImage,
+      alsoApplyPhotoToMedicationIds: alsoApplyPhotoToMedicationIds,
     );
   }
 

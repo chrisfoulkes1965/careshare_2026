@@ -1,6 +1,6 @@
-﻿import "package:equatable/equatable.dart";
+import "package:equatable/equatable.dart";
 
-import "../models/household_task.dart";
+import "../models/care_group_task.dart";
 
 sealed class TasksState extends Equatable {
   const TasksState();

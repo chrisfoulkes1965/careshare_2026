@@ -39,8 +39,8 @@ service cloud.firestore {
     }
 
     // True if the user is a member of this care group document OR of its linked
-    // "team" document (see setup: one doc holds members, the other holds household
-    // fields, cross-linked by careGroupId).
+    // "team" document (legacy: two [careGroups] docs cross-linked by [careGroupId]).
+    // New setup uses a single merged [careGroups] document with [members/] only.
     function isCareGroupMember(careGroupDocId) {
       return signedIn() && (
         memberExists(careGroupDocId, request.auth.uid)
@@ -176,6 +176,10 @@ service cloud.firestore {
       allow create, delete: if false;
     }
 
+    match /users/{userId}/devicePushTokens/{docId} {
+      allow read, create, update, delete: if isSelf(userId);
+    }
+
     match /invitations/{invitationId} {
       allow read: if signedIn() && (
         emailMatchesInvite(resource.data)
@@ -188,7 +192,7 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.keys().hasAll([
           'careGroupId',
-          'householdId',
+          'dataCareGroupId',
           'invitedEmail',
           'invitedBy',
           'status',
@@ -252,7 +256,7 @@ service cloud.firestore {
         && (
           (
             isSelf(userId)
-            && diffKeys().hasOnly(['messagingToken', 'simpleMode', 'displayName', 'photoUrl'])
+            && diffKeys().hasOnly(['messagingToken', 'simpleMode', 'displayName', 'photoUrl', 'avatarIndex'])
           )
           || (
             hasRole(careTeamId(careGroupId), request.auth.uid, 'principal_carer')
@@ -293,11 +297,24 @@ service cloud.firestore {
           && request.resource.data.createdBy == request.auth.uid
           && isCareGroupMember(request.resource.data.careGroupId)
         )
+        || (
+          request.resource.data.keys().hasAll(['name', 'description', 'recipientIds', 'pathwayIds', 'recipientProfiles', 'address', 'addressType', 'createdBy', 'createdAt'])
+          && request.resource.data.createdBy == request.auth.uid
+          && !request.resource.data.keys().hasAny(['careGroupId'])
+        )
       );
 
+      // Legacy docs: cross-link field [careGroupId] is immutable. Merged (single) docs have no that field.
       allow update: if signedIn()
         && isPrincipalCarerForCareGroup(careGroupId)
-        && request.resource.data.careGroupId == resource.data.careGroupId;
+        && (
+          (!resource.data.keys().hasAny(['careGroupId']) && !request.resource.data.keys().hasAny(['careGroupId']))
+          || (
+            resource.data.keys().hasAny(['careGroupId'])
+            && request.resource.data.keys().hasAny(['careGroupId'])
+            && request.resource.data.careGroupId == resource.data.careGroupId
+          )
+        );
 
       allow delete: if false;
 
@@ -365,12 +382,61 @@ service cloud.firestore {
       }
 
       match /expenses/{expenseId} {
+        function expenseOptionalStringsOk() {
+          return (!request.resource.data.keys().hasAny(['category'])
+              || (request.resource.data.category is string
+                && request.resource.data.category.size() <= 50))
+            && (!request.resource.data.keys().hasAny(['payee'])
+              || (request.resource.data.payee is string
+                && request.resource.data.payee.size() <= 200))
+            && (!request.resource.data.keys().hasAny(['notes'])
+              || (request.resource.data.notes is string
+                && request.resource.data.notes.size() <= 4000))
+            && (!request.resource.data.keys().hasAny(['receiptUrl'])
+              || (request.resource.data.receiptUrl is string
+                && request.resource.data.receiptUrl.size() > 0
+                && request.resource.data.receiptUrl.size() <= 2048));
+        }
+
         allow read: if isCareGroupMember(careGroupId) && isExpenseReaderForCareGroup(careGroupId);
 
         allow create: if isCareGroupMember(careGroupId)
-          && isFinancialOrPrincipalForCareGroup(careGroupId);
+          && isFinancialOrPrincipalForCareGroup(careGroupId)
+          && request.resource.data.keys().hasAll([
+            'title', 'amount', 'currency', 'spentAt', 'createdBy', 'createdAt',
+          ])
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.title is string
+          && request.resource.data.title.size() >= 1
+          && request.resource.data.title.size() <= 200
+          && request.resource.data.amount is number
+          && request.resource.data.amount > 0
+          && request.resource.data.amount < 1000000000000
+          && request.resource.data.currency is string
+          && request.resource.data.currency.size() >= 1
+          && request.resource.data.currency.size() <= 8
+          && request.resource.data.spentAt is timestamp
+          && expenseOptionalStringsOk();
 
-        allow update, delete: if isCareGroupMember(careGroupId)
+        allow update: if isCareGroupMember(careGroupId)
+          && isFinancialOrPrincipalForCareGroup(careGroupId)
+          && request.resource.data.createdBy == resource.data.createdBy
+          && diffKeys().hasOnly([
+            'title', 'amount', 'currency', 'spentAt', 'category', 'payee', 'notes', 'receiptUrl', 'updatedAt',
+          ])
+          && request.resource.data.title is string
+          && request.resource.data.title.size() >= 1
+          && request.resource.data.title.size() <= 200
+          && request.resource.data.amount is number
+          && request.resource.data.amount > 0
+          && request.resource.data.amount < 1000000000000
+          && request.resource.data.currency is string
+          && request.resource.data.currency.size() >= 1
+          && request.resource.data.currency.size() <= 8
+          && request.resource.data.spentAt is timestamp
+          && expenseOptionalStringsOk();
+
+        allow delete: if isCareGroupMember(careGroupId)
           && isFinancialOrPrincipalForCareGroup(careGroupId);
       }
 
@@ -447,6 +513,86 @@ service cloud.firestore {
           && request.resource.data.subjectId == request.auth.uid;
 
         allow update, delete: if false;
+      }
+
+      // --- Care group chat (channels, messages, per-user read cursors) ----------------
+      function isChatChannelMember(careGroupId, channelId) {
+        let p = /databases/$(database)/documents/careGroups/$(careGroupId)/chatChannels/$(channelId);
+        return exists(p)
+          && get(p).data.keys().hasAny(['memberUids'])
+          && request.auth.uid in get(p).data.memberUids;
+      }
+
+      match /userChannelRead/{userId} {
+        match /channels/{channelId} {
+          allow read, create, update: if signedIn()
+            && isSelf(userId)
+            && isCareGroupMember(careGroupId)
+            && isChatChannelMember(careGroupId, channelId)
+            && request.resource.data.keys().hasAll(['lastReadAt']);
+
+          // Allow delete when leaving the channel (may happen before memberUids is updated).
+          allow delete: if signedIn()
+            && isSelf(userId)
+            && isCareGroupMember(careGroupId);
+        }
+      }
+
+      match /chatChannels/{channelId} {
+        function validChatChannelWhatsappInviteUrl() {
+          let w = request.resource.data.whatsappInviteUrl;
+          return w is string
+            && w.size() < 400
+            && (w == ''
+              || w.matches('^https://chat\\.whatsapp\\.com/.*'));
+        }
+
+        allow read: if isCareGroupMember(careGroupId)
+          && request.auth.uid in resource.data.memberUids;
+
+        allow create: if isCareGroupMember(careGroupId)
+          && isCarerOrPrincipalForCareGroup(careGroupId)
+          && !isReceivesCareOnlyMember(careGroupId)
+          && request.resource.data.keys().hasAll(['name', 'createdBy', 'createdAt', 'memberUids'])
+          && request.resource.data.createdBy == request.auth.uid
+          && request.auth.uid in request.resource.data.memberUids
+          && request.resource.data.memberUids is list
+          && request.resource.data.memberUids.size() > 0
+          && request.resource.data.memberUids.size() < 100;
+
+        allow update: if isCareGroupMember(careGroupId)
+          && request.auth.uid in resource.data.memberUids
+          && (
+            (
+              isCarerOrPrincipalForCareGroup(careGroupId)
+              && !isReceivesCareOnlyMember(careGroupId)
+              && diffKeys().hasOnly(['name', 'description', 'topic', 'memberUids', 'whatsappInviteUrl'])
+              && (!request.resource.data.keys().hasAny(['whatsappInviteUrl'])
+                || validChatChannelWhatsappInviteUrl())
+            )
+            || (
+              !request.auth.uid in request.resource.data.memberUids
+              && request.resource.data.memberUids.size() + 1 == resource.data.memberUids.size()
+              && diffKeys().hasOnly(['memberUids'])
+            )
+          );
+
+        allow delete: if isPrincipalCarerForCareGroup(careGroupId);
+
+        match /messages/{messageId} {
+          allow read: if isCareGroupMember(careGroupId)
+            && isChatChannelMember(careGroupId, channelId);
+
+          allow create: if isCareGroupMember(careGroupId)
+            && isChatChannelMember(careGroupId, channelId)
+            && request.resource.data.keys().hasAll(['text', 'createdBy', 'createdAt'])
+            && request.resource.data.createdBy == request.auth.uid
+            && request.resource.data.text is string
+            && request.resource.data.text.size() > 0
+            && request.resource.data.text.size() < 8000;
+
+          allow update, delete: if false;
+        }
       }
 
       // Append-only audit trail (POA-sensitive actions). Prefer Cloud Function creates.

@@ -1,6 +1,7 @@
 import "package:cloud_firestore/cloud_firestore.dart";
 import "package:firebase_auth/firebase_auth.dart";
 
+import "../../../core/firebase/firestore_remote_compat.dart";
 import "../../care_group/models/care_group_option.dart";
 import "../models/user_profile.dart";
 
@@ -14,6 +15,9 @@ class UserRepository {
 
   DocumentReference<Map<String, dynamic>> _userRef(String uid) =>
       FirebaseFirestore.instance.collection("users").doc(uid);
+
+  CollectionReference<Map<String, dynamic>> _devicePushTokens(String uid) =>
+      _userRef(uid).collection("devicePushTokens");
 
   Future<UserProfile?> fetchProfile(String uid) async {
     if (!_firebaseReady) return null;
@@ -54,6 +58,32 @@ class UserRepository {
     await _userRef(uid).update(data);
   }
 
+  /// One document per app install (see [installationId]). Used by Cloud Functions for FCM.
+  Future<void> upsertDevicePushToken({
+    required String uid,
+    required String installationId,
+    required String token,
+    required String platform,
+  }) async {
+    if (!_firebaseReady) return;
+    await _devicePushTokens(uid).doc(installationId).set(
+      {
+        "token": token,
+        "platform": platform,
+        "updatedAt": FieldValue.serverTimestamp(),
+      },
+      SetOptions(merge: true),
+    );
+  }
+
+  Future<void> removeDevicePushToken({
+    required String uid,
+    required String installationId,
+  }) async {
+    if (!_firebaseReady) return;
+    await _devicePushTokens(uid).doc(installationId).delete();
+  }
+
   /// Use a built-in avatar; clears [photoUrl] in Firestore so the preset shows in the app.
   Future<void> setAvatarPreset(String uid, int oneBasedIndex) async {
     if (!_firebaseReady) return;
@@ -78,22 +108,248 @@ class UserRepository {
     }
   }
 
-  /// Persists [activeHouseholdId] and [activeCareGroupId] on the user document.
+  /// Adds a care recipient who does not use the app to [recipientIds] / [recipientProfiles]
+  /// on the home [careGroups] document (principal carer per rules).
+  ///
+  /// [dataCareGroupDocId] is [ProfileReady.activeCareGroupDataId] — the document that holds
+  /// home metadata and the recipient list from setup.
+  Future<void> addOfflineCareRecipient({
+    required String dataCareGroupDocId,
+    required String displayName,
+  }) async {
+    if (!_firebaseReady) return;
+    final t = displayName.trim();
+    if (t.isEmpty) {
+      throw ArgumentError("Enter a name.");
+    }
+    final ref =
+        FirebaseFirestore.instance.collection("careGroups").doc(dataCareGroupDocId);
+    await FirebaseFirestore.instance.runTransaction((tx) async {
+      final snap = await tx.get(ref);
+      if (!snap.exists) {
+        throw StateError("Care group not found.");
+      }
+      final data = snap.data() ?? {};
+      final rawIds = data["recipientIds"];
+      final rawProfiles = data["recipientProfiles"];
+      final ids = <String>[
+        ...?((rawIds as List?)?.map((e) => e.toString())),
+      ];
+      final profiles = <Map<String, dynamic>>[
+        ...?((rawProfiles as List?)?.map(
+              (e) => Map<String, dynamic>.from(e as Map),
+            )),
+      ];
+      final id = "rcp_${DateTime.now().microsecondsSinceEpoch}";
+      ids.add(id);
+      profiles.add({
+        "id": id,
+        "displayName": t,
+        "accessMode": "managed",
+      });
+      tx.update(ref, {
+        "recipientIds": ids,
+        "recipientProfiles": profiles,
+      });
+    });
+  }
+
+  /// Removes one entry from [recipientIds] / [recipientProfiles] on the home [careGroups] doc.
+  Future<void> removeOfflineCareRecipient({
+    required String dataCareGroupDocId,
+    required String recipientId,
+  }) async {
+    if (!_firebaseReady) return;
+    if (recipientId.isEmpty) {
+      throw ArgumentError("Missing recipient id.");
+    }
+    final ref =
+        FirebaseFirestore.instance.collection("careGroups").doc(dataCareGroupDocId);
+    await FirebaseFirestore.instance.runTransaction((tx) async {
+      final snap = await tx.get(ref);
+      if (!snap.exists) {
+        throw StateError("Care group not found.");
+      }
+      final data = snap.data() ?? {};
+      final rawIds = data["recipientIds"];
+      final rawProfiles = data["recipientProfiles"];
+      final ids = <String>[
+        ...?((rawIds as List?)?.map((e) => e.toString())),
+      ];
+      final profiles = <Map<String, dynamic>>[
+        ...?((rawProfiles as List?)?.map(
+              (e) => Map<String, dynamic>.from(e as Map),
+            )),
+      ];
+      final nextIds = ids.where((e) => e != recipientId).toList();
+      final nextProfiles = profiles
+          .where(
+            (p) => p["id"]?.toString() != recipientId,
+          )
+          .toList();
+      if (nextProfiles.length == profiles.length && nextIds.length == ids.length) {
+        throw StateError(
+          "That person was not found on this home document. Pull to refresh or check your care group link.",
+        );
+      }
+      tx.update(ref, {
+        "recipientIds": nextIds,
+        "recipientProfiles": nextProfiles,
+      });
+    });
+  }
+
+  /// Pushes [displayName], [photoUrl], and [avatarIndex] from the user profile into every
+  /// `careGroups/.../members/{uid}` row for this user so the members list can show
+  /// [CareUserAvatar] without reading `users/{uid}` (other users' profiles are not readable).
+  Future<void> syncMemberRosterFromProfile({
+    required String uid,
+    required UserProfile profile,
+  }) async {
+    if (!_firebaseReady) return;
+    final snap = await FirebaseFirestore.instance
+        .collectionGroup("members")
+        .where(FieldPath.documentId, isEqualTo: uid)
+        .get();
+    if (snap.docs.isEmpty) return;
+
+    var batch = FirebaseFirestore.instance.batch();
+    var ops = 0;
+    for (final doc in snap.docs) {
+      final patch = <String, dynamic>{
+        "displayName": profile.displayName.trim(),
+      };
+      final pu = profile.photoUrl?.trim() ?? "";
+      if (pu.isNotEmpty) {
+        patch["photoUrl"] = pu;
+        patch["avatarIndex"] = FieldValue.delete();
+      } else {
+        patch["photoUrl"] = FieldValue.delete();
+        final ai = profile.avatarIndex;
+        if (ai != null && ai >= 1) {
+          patch["avatarIndex"] = ai;
+        } else {
+          patch["avatarIndex"] = FieldValue.delete();
+        }
+      }
+      batch.update(doc.reference, patch);
+      ops++;
+      if (ops >= 400) {
+        await batch.commit();
+        batch = FirebaseFirestore.instance.batch();
+        ops = 0;
+      }
+    }
+    if (ops > 0) {
+      await batch.commit();
+    }
+  }
+
+  /// Updates `careGroups/{careGroupId}.name` (trimmed, non-empty). Principal-only per rules.
+  Future<void> updateCareGroupName({
+    required String careGroupId,
+    required String name,
+  }) async {
+    if (!_firebaseReady) return;
+    final t = name.trim();
+    if (t.isEmpty) {
+      throw ArgumentError("Care group name cannot be empty.");
+    }
+    await FirebaseFirestore.instance
+        .collection("careGroups")
+        .doc(careGroupId)
+        .update({"name": t});
+  }
+
+  /// Sets `careGroups/{careGroupId}.themeColor` (ARGB int). Only allowed for principal
+  /// carers per Firestore rules; may throw on permission denied.
+  Future<void> setCareGroupThemeColor({
+    required String careGroupId,
+    int? argb,
+  }) async {
+    if (!_firebaseReady) return;
+    final ref =
+        FirebaseFirestore.instance.collection("careGroups").doc(careGroupId);
+    if (argb == null) {
+      await ref.update({"themeColor": FieldValue.delete()});
+    } else {
+      await ref.update({"themeColor": argb});
+    }
+  }
+
+  /// Persists [UserProfile.activeCareGroupId] and removes a legacy extra field if present.
   Future<void> setActiveCareGroup({
     required String uid,
     required String careGroupId,
-    required String householdId,
   }) async {
     if (!_firebaseReady) return;
     await _userRef(uid).update({
       "activeCareGroupId": careGroupId,
-      "activeHouseholdId": householdId,
+      firestoreUserLegacyActiveCareGroupField(): FieldValue.delete(),
     });
   }
 
-  /// Every care group where `careGroups/{id}/members/{uid}` exists; deduped by home id, sorted by name.
+  /// When [listCareGroupsForUser] is empty (e.g. collection-group) but the profile
+  /// has [UserProfile.activeCareGroupId], build a [CareGroupOption] with direct [get]s.
+  Future<CareGroupOption?> fetchCareGroupOptionForActiveProfile({
+    required String uid,
+    required String careGroupId,
+  }) async {
+    if (!_firebaseReady) return null;
+    final teamRef =
+        FirebaseFirestore.instance.collection("careGroups").doc(careGroupId);
+    final teamSnap = await teamRef.get();
+    if (!teamSnap.exists) return null;
+    final data = teamSnap.data()!;
+    final memberSnap = await teamRef.collection("members").doc(uid).get();
+    if (!memberSnap.exists) return null;
+    final mData = memberSnap.data() ?? {};
+    final rawRoles = mData["roles"];
+    final roles = rawRoles is List
+        ? rawRoles.map((e) => e.toString()).toList()
+        : <String>[];
+    final linked = (data["careGroupId"] as String?)?.trim();
+    final resolvedDataGroupId = (linked != null && linked.isNotEmpty)
+        ? linked
+        : careGroupId;
+    var displayName = (data["name"] as String?)?.trim() ?? "";
+    if (displayName.isEmpty) {
+      String? hName;
+      final h1 = await FirebaseFirestore.instance
+          .collection(firestoreTopLevelHomeMetadataCollection())
+          .doc(resolvedDataGroupId)
+          .get();
+      if (h1.exists) {
+        hName = (h1.data()?["name"] as String?)?.trim();
+        if (hName != null && hName.isEmpty) {
+          hName = null;
+        }
+      }
+      if (hName == null) {
+        final h2 = await FirebaseFirestore.instance
+            .collection("careGroups")
+            .doc(resolvedDataGroupId)
+            .get();
+        if (h2.exists) {
+          hName = (h2.data()?["name"] as String?)?.trim();
+        }
+      }
+      displayName = (hName != null && hName.isNotEmpty) ? hName : "Care group";
+    }
+    return CareGroupOption(
+      careGroupId: careGroupId,
+      dataCareGroupId: resolvedDataGroupId,
+      displayName: displayName,
+      roles: roles,
+      themeColor: _parseThemeColorArgb(data),
+    );
+  }
+
+  /// Every care group where `careGroups/{id}/members/{uid}` exists; deduped by linked data
+  /// document id, sorted by name.
   ///
-  /// Uses a [collectionGroup] query on `members` and reads linked `careGroups` (and `households` for name).
+  /// Uses a [collectionGroup] query on `members` and reads linked [careGroups] (and the
+  /// top-level home metadata collection when present) for display names.
   Future<List<CareGroupOption>> listCareGroupsForUser(String uid) async {
     if (!_firebaseReady) return const [];
 
@@ -106,7 +362,7 @@ class UserRepository {
       return const [];
     }
 
-    final byHome = <String, CareGroupOption>{};
+    final byDataGroup = <String, CareGroupOption>{};
 
     for (final memberDoc in membersSnap.docs) {
       final mData = memberDoc.data();
@@ -125,41 +381,53 @@ class UserRepository {
       if (!cgSnap.exists) continue;
       final cgData = cgSnap.data()!;
       // Linked home: stored as `careGroupId` on the care group document (see setup wizard / rules).
-      final linkedHomeId = cgData["careGroupId"] as String?;
-      if (linkedHomeId == null || linkedHomeId.isEmpty) continue;
-      if (byHome.containsKey(linkedHomeId)) continue;
+      final linkedDataGroupId = cgData["careGroupId"] as String?;
+      if (linkedDataGroupId == null || linkedDataGroupId.isEmpty) continue;
+      if (byDataGroup.containsKey(linkedDataGroupId)) continue;
 
-      var name = (cgData["name"] as String?)?.trim() ?? "Care group";
+      final cgName = (cgData["name"] as String?)?.trim();
+      String? hName;
       final hSnap = await FirebaseFirestore.instance
-          .collection("households")
-          .doc(linkedHomeId)
+          .collection(firestoreTopLevelHomeMetadataCollection())
+          .doc(linkedDataGroupId)
           .get();
       if (hSnap.exists) {
-        final hn = (hSnap.data()?["name"] as String?)?.trim();
-        if (hn != null && hn.isNotEmpty) {
-          name = hn;
+        hName = (hSnap.data()?["name"] as String?)?.trim();
+        if (hName != null && hName.isEmpty) {
+          hName = null;
         }
-      } else {
-        final alt = await FirebaseFirestore.instance
+      }
+      // Setup wizard may store the linked document only under [careGroups].
+      String? fromCareGroupsHome;
+      if (hName == null) {
+        final hCg = await FirebaseFirestore.instance
             .collection("careGroups")
-            .doc(linkedHomeId)
+            .doc(linkedDataGroupId)
             .get();
-        if (alt.exists) {
-          final hn = (alt.data()?["name"] as String?)?.trim();
-          if (hn != null && hn.isNotEmpty) {
-            name = hn;
+        if (hCg.exists) {
+          fromCareGroupsHome = (hCg.data()?["name"] as String?)?.trim();
+          if (fromCareGroupsHome != null && fromCareGroupsHome.isEmpty) {
+            fromCareGroupsHome = null;
           }
         }
       }
-      byHome[linkedHomeId] = CareGroupOption(
+      final name = (cgName != null && cgName.isNotEmpty)
+          ? cgName
+          : (hName != null && hName.isNotEmpty)
+              ? hName
+              : (fromCareGroupsHome != null && fromCareGroupsHome.isNotEmpty)
+                  ? fromCareGroupsHome
+                  : "Care group";
+      byDataGroup[linkedDataGroupId] = CareGroupOption(
         careGroupId: careGroupDocId,
-        householdId: linkedHomeId,
+        dataCareGroupId: linkedDataGroupId,
         displayName: name,
         roles: roles,
+        themeColor: _parseThemeColorArgb(cgData),
       );
     }
 
-    final list = byHome.values.toList();
+    final list = byDataGroup.values.toList();
     list.sort(
       (a, b) =>
           a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()),
@@ -177,7 +445,6 @@ class UserRepository {
       simpleMode: data["simpleMode"] as bool? ?? false,
       wizardCompleted: data["wizardCompleted"] as bool? ?? false,
       wizardSkipped: data["wizardSkipped"] as bool? ?? false,
-      activeHouseholdId: data["activeHouseholdId"] as String?,
       activeCareGroupId: data["activeCareGroupId"] as String?,
       wizardDraft: (data["wizardDraft"] as Map?)?.cast<String, dynamic>(),
     );
@@ -187,5 +454,12 @@ class UserRepository {
     final at = email.indexOf("@");
     if (at <= 0) return "Carer";
     return email.substring(0, at);
+  }
+
+  static int? _parseThemeColorArgb(Map<String, dynamic> data) {
+    final t = data["themeColor"];
+    if (t is int) return t;
+    if (t is num) return t.toInt();
+    return null;
   }
 }

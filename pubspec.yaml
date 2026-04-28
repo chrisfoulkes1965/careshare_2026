@@ -25,13 +25,23 @@ dependencies:
   timezone: ^0.11.0
   flutter_timezone: ^5.0.2
   http: ^1.6.0
+  table_calendar: ^3.2.0
+  shared_preferences: ^2.3.3
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  image: ^4.3.0
 
 flutter:
   uses-material-design: true
   assets:
     - assets/images/avatars/
+    - assets/images/CareShareLogo50.jpg
+    - assets/images/CareShareLogo75.jpg
+    - assets/images/CareShareLogo100.jpg
+    - assets/images/CareShareLogo500.jpg
+    - assets/images/CareShareInverted.png
+    - assets/images/CareShareInvertedFilled.png
+    - assets/images/CareShareMark.png

@@ -1,6 +1,7 @@
 import "package:cloud_firestore/cloud_firestore.dart";
 import "package:firebase_auth/firebase_auth.dart";
 
+import "../../../core/firebase/firestore_remote_compat.dart";
 import "../models/setup_models.dart";
 
 final class SetupSubmit {
@@ -70,42 +71,20 @@ class SetupRepository {
     }
 
     final firestore = FirebaseFirestore.instance;
-    final hhRef = firestore.collection("careGroups").doc();
-    final hhId = hhRef.id;
-    final cgRef = firestore.collection("careGroups").doc();
-    final cgId = cgRef.id;
+    final groupRef = firestore.collection("careGroups").doc();
+    final gId = groupRef.id;
     final userRef = firestore.collection("users").doc(uid);
     final now = FieldValue.serverTimestamp();
 
     final recipientIds = submit.recipients.map((r) => r.id).toList();
 
-    // Two-phase writes: Firestore evaluates each operation in a batch
-    // independently. `careGroups` create requires `isCareGroupMember(careGroupId)`,
-    // which needs `careGroups/{id}/members/{uid}` to already exist — so commit
-    // the care group + principal member first, then careGroup + invites.
-    final groupBatch = firestore.batch();
+    // One [careGroups] document: care team, home/address, recipients, and [members/].
+    // Rules allow principal to create [members] for self in the same batch.
+    final batch = firestore.batch();
 
-    groupBatch.set(cgRef, {
-      "careGroupId": hhId,
-      "name": submit.careGroupName.trim(),
-      "createdBy": uid,
-      "createdAt": now,
-    });
-
-    groupBatch.set(cgRef.collection("members").doc(uid), {
-      "roles": ["principal_carer"],
-      "displayName": submit.principalDisplayName.trim(),
-      "joinedAt": now,
-      "kudosScore": 0,
-    });
-
-    await groupBatch.commit();
-
-    final careGroupBatch = firestore.batch();
-    careGroupBatch.set(hhRef, {
+    batch.set(groupRef, {
       "name": submit.careGroupName.trim(),
       "description": submit.careGroupDescription.trim(),
-      "careGroupId": cgId,
       "recipientIds": recipientIds,
       "pathwayIds": submit.pathwayIds,
       "recipientProfiles": submit.recipients.map((e) => e.toMap()).toList(),
@@ -114,14 +93,22 @@ class SetupRepository {
       "createdBy": uid,
       "createdAt": now,
     });
-    await careGroupBatch.commit();
+
+    batch.set(groupRef.collection("members").doc(uid), {
+      "roles": ["principal_carer"],
+      "displayName": submit.principalDisplayName.trim(),
+      "joinedAt": now,
+      "kudosScore": 0,
+    });
+
+    await batch.commit();
 
     final followUp = firestore.batch();
     for (final email in _normaliseEmails(submit.inviteEmails)) {
       final invRef = firestore.collection("invitations").doc();
       followUp.set(invRef, {
-        "careGroupId": cgId,
-        "householdId": hhId,
+        "careGroupId": gId,
+        "dataCareGroupId": gId,
         "invitedEmail": email,
         "invitedBy": uid,
         "status": "pending",
@@ -132,8 +119,8 @@ class SetupRepository {
     final userUpdate = <String, dynamic>{
       "wizardCompleted": true,
       "wizardSkipped": false,
-      "activeHouseholdId": hhId,
-      "activeCareGroupId": cgId,
+      "activeCareGroupId": gId,
+      firestoreUserLegacyActiveCareGroupField(): FieldValue.delete(),
       "wizardDraft": FieldValue.delete(),
     };
     if (submit.avatarIndex != null) {

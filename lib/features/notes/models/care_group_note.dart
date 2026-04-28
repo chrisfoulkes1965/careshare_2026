@@ -1,6 +1,6 @@
 import "package:cloud_firestore/cloud_firestore.dart";
 
-/// `careGroups/{hid}/notes/{id}` — create rule requires [title, type, createdBy, createdAt].
+/// `careGroups/{careGroupId}/notes/{id}` — create rule requires [title, type, createdBy, createdAt].
 /// Optional: [body], [category] (e.g. `legal` limits read to principal/POA per rules).
 final class CareGroupNote {
   const CareGroupNote({

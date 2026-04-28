@@ -3,11 +3,15 @@ import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
 
 import "core/medication_reminders/medication_notification_service.dart";
+import "core/push/careshare_push_service.dart";
 import "core/theme/app_theme.dart";
+import "core/theme/care_group_header_theme.dart";
 import "features/auth/bloc/auth_bloc.dart";
 import "features/auth/repository/auth_repository.dart";
 import "features/care_pathway/repository/pathways_repository.dart";
+import "features/chat/repository/chat_repository.dart";
 import "features/contacts/repository/contacts_repository.dart";
+import "features/expenses/repository/expenses_repository.dart";
 import "features/invitations/repository/invitation_repository.dart";
 import "features/journal/repository/journal_repository.dart";
 import "features/medications/repository/medication_care_group_settings_repository.dart";
@@ -17,6 +21,7 @@ import "features/meetings/repository/meetings_repository.dart";
 import "features/members/repository/members_repository.dart";
 import "features/notes/repository/notes_repository.dart";
 import "features/profile/profile_cubit.dart";
+import "features/profile/profile_state.dart";
 import "features/setup_wizard/repository/setup_repository.dart";
 import "features/tasks/repository/task_repository.dart";
 import "features/user/repository/user_repository.dart";
@@ -30,10 +35,12 @@ class CareShareApp extends StatefulWidget {
   State<CareShareApp> createState() => _CareShareAppState();
 }
 
-class _CareShareAppState extends State<CareShareApp> with WidgetsBindingObserver {
+class _CareShareAppState extends State<CareShareApp>
+    with WidgetsBindingObserver {
   GoRouter? _router;
   SessionRefresh? _sessionRefresh;
   bool _doseNavRegistered = false;
+  bool _pushBound = false;
 
   @override
   void initState() {
@@ -43,16 +50,25 @@ class _CareShareAppState extends State<CareShareApp> with WidgetsBindingObserver
       if (!mounted) return;
       final authBloc = context.read<AuthBloc>();
       final profileCubit = context.read<ProfileCubit>();
-      _sessionRefresh ??= SessionRefresh(authBloc: authBloc, profileCubit: profileCubit);
+      _sessionRefresh ??=
+          SessionRefresh(authBloc: authBloc, profileCubit: profileCubit);
       setState(() {
         _router ??= AppRouter.create(
           authBloc: authBloc,
           profileCubit: profileCubit,
           sessionRefresh: _sessionRefresh!,
         );
+        if (_router != null && !_pushBound) {
+          _pushBound = true;
+          CaresharePushService.instance.bind(
+            router: _router!,
+            userRepository: context.read<UserRepository>(),
+          );
+        }
         if (_router != null && !_doseNavRegistered) {
           _doseNavRegistered = true;
-          MedicationNotificationService.instance.setDosePayloadHandler((payload) {
+          MedicationNotificationService.instance
+              .setDosePayloadHandler((payload) {
             final parts = payload.split("|");
             if (parts.length < 3) {
               return;
@@ -66,10 +82,13 @@ class _CareShareAppState extends State<CareShareApp> with WidgetsBindingObserver
             if (ids.isEmpty) {
               return;
             }
-            _router!.push("/medication-dose", extra: MedicationDoseRouteArgs(
-              careGroupId: cg,
-              medicationIds: ids,
-            ),);
+            _router!.push(
+              "/medication-dose",
+              extra: MedicationDoseRouteArgs(
+                careGroupId: cg,
+                medicationIds: ids,
+              ),
+            );
           });
         }
       });
@@ -105,6 +124,30 @@ class _CareShareAppState extends State<CareShareApp> with WidgetsBindingObserver
       title: "CareShare",
       theme: AppTheme.light(),
       routerConfig: router,
+      builder: (context, child) {
+        return BlocBuilder<ProfileCubit, ProfileState>(
+          buildWhen: (prev, next) {
+            if (prev is ProfileReady && next is ProfileReady) {
+              return prev.activeCareGroupThemeArgb !=
+                  next.activeCareGroupThemeArgb;
+            }
+            return (prev is ProfileReady) != (next is ProfileReady);
+          },
+          builder: (context, state) {
+            final w = child ?? const SizedBox.shrink();
+            if (state is! ProfileReady) {
+              return w;
+            }
+            return Theme(
+              data: buildCareGroupAppTheme(
+                Theme.of(context),
+                activeThemeArgb: state.activeCareGroupThemeArgb,
+              ),
+              child: w,
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -129,33 +172,53 @@ class CareShareRoot extends StatelessWidget {
               child: RepositoryProvider(
                 create: (_) => JournalRepository(firebaseReady: firebaseReady),
                 child: RepositoryProvider(
-          create: (_) => PathwaysRepository(firebaseReady: firebaseReady),
+                  create: (_) =>
+                      PathwaysRepository(firebaseReady: firebaseReady),
                   child: RepositoryProvider(
-                    create: (_) => NotesRepository(firebaseReady: firebaseReady),
+                    create: (_) =>
+                        NotesRepository(firebaseReady: firebaseReady),
                     child: RepositoryProvider(
-                      create: (_) => MembersRepository(firebaseReady: firebaseReady),
+                      create: (_) =>
+                          MembersRepository(firebaseReady: firebaseReady),
                       child: RepositoryProvider(
-                        create: (_) => ContactsRepository(firebaseReady: firebaseReady),
+                        create: (_) =>
+                            ContactsRepository(firebaseReady: firebaseReady),
                         child: RepositoryProvider(
-                          create: (_) => MeetingsRepository(firebaseReady: firebaseReady),
-                        child: RepositoryProvider(
-                          create: (_) => MedicationCareGroupSettingsRepository(firebaseReady: firebaseReady),
-                        child: RepositoryProvider(
-                          create: (_) => MedicationsRepository(firebaseReady: firebaseReady),
-                            child: BlocProvider(
-                              create: (context) => AuthBloc(
-                                repository: context.read<AuthRepository>(),
-                              ),
-                              child: BlocProvider(
-                                create: (context) => ProfileCubit(
-                                  authBloc: context.read<AuthBloc>(),
-                                  userRepository: context.read<UserRepository>(),
+                          create: (_) =>
+                              ExpensesRepository(firebaseReady: firebaseReady),
+                          child: RepositoryProvider(
+                            create: (_) =>
+                                ChatRepository(firebaseReady: firebaseReady),
+                            child: RepositoryProvider(
+                              create: (_) => MeetingsRepository(
+                                  firebaseReady: firebaseReady),
+                              child: RepositoryProvider(
+                                create: (_) =>
+                                    MedicationCareGroupSettingsRepository(
+                                        firebaseReady: firebaseReady),
+                                child: RepositoryProvider(
+                                  create: (_) => MedicationsRepository(
+                                      firebaseReady: firebaseReady),
+                                  child: BlocProvider(
+                                    create: (context) => AuthBloc(
+                                      repository:
+                                          context.read<AuthRepository>(),
+                                    ),
+                                    child: BlocProvider(
+                                      create: (context) => ProfileCubit(
+                                        authBloc: context.read<AuthBloc>(),
+                                        userRepository:
+                                            context.read<UserRepository>(),
+                                        invitationRepository: context
+                                            .read<InvitationRepository>(),
+                                      ),
+                                      child: const CareShareApp(),
+                                    ),
+                                  ),
                                 ),
-                                child: const CareShareApp(),
                               ),
                             ),
                           ),
-                        ),
                         ),
                       ),
                     ),

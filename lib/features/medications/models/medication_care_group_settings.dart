@@ -1,4 +1,4 @@
-/// `careGroups/{householdId}` — inventory / reorder (stored on the home document).
+/// `careGroups/{careGroupId}` — inventory / reorder (stored on the care group document).
 final class MedicationInventoryCareGroupSettings {
   const MedicationInventoryCareGroupSettings({
     this.reorderLeadDays = 7,

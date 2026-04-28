@@ -1,6 +1,6 @@
 import "package:cloud_firestore/cloud_firestore.dart";
 
-/// `careGroups/{hid}/journalEntries/{id}` — carers and principal can read/write;
+/// `careGroups/{careGroupId}/journalEntries/{id}` — carers and principal can read/write;
 /// "receives care only" members cannot read (see firestore.rules).
 final class JournalEntry {
   const JournalEntry({

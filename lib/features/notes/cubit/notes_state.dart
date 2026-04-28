@@ -1,6 +1,6 @@
-﻿import "package:equatable/equatable.dart";
+import "package:equatable/equatable.dart";
 
-import "../models/household_note.dart";
+import "../models/care_group_note.dart";
 
 sealed class NotesState extends Equatable {
   const NotesState();

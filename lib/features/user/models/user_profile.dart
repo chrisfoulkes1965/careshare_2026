@@ -10,7 +10,6 @@ final class UserProfile extends Equatable {
     this.simpleMode = false,
     this.wizardCompleted = false,
     this.wizardSkipped = false,
-    this.activeHouseholdId,
     this.activeCareGroupId,
     this.wizardDraft,
   });
@@ -23,7 +22,6 @@ final class UserProfile extends Equatable {
   final bool simpleMode;
   final bool wizardCompleted;
   final bool wizardSkipped;
-  final String? activeHouseholdId;
   final String? activeCareGroupId;
   final Map<String, dynamic>? wizardDraft;
 
@@ -36,7 +34,6 @@ final class UserProfile extends Equatable {
     bool? simpleMode,
     bool? wizardCompleted,
     bool? wizardSkipped,
-    String? activeHouseholdId,
     String? activeCareGroupId,
     Map<String, dynamic>? wizardDraft,
   }) {
@@ -49,7 +46,6 @@ final class UserProfile extends Equatable {
       simpleMode: simpleMode ?? this.simpleMode,
       wizardCompleted: wizardCompleted ?? this.wizardCompleted,
       wizardSkipped: wizardSkipped ?? this.wizardSkipped,
-      activeHouseholdId: activeHouseholdId ?? this.activeHouseholdId,
       activeCareGroupId: activeCareGroupId ?? this.activeCareGroupId,
       wizardDraft: wizardDraft ?? this.wizardDraft,
     );
@@ -65,7 +61,6 @@ final class UserProfile extends Equatable {
         simpleMode,
         wizardCompleted,
         wizardSkipped,
-        activeHouseholdId,
         activeCareGroupId,
         wizardDraft,
       ];

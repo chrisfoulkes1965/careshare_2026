@@ -10,6 +10,8 @@ final class CareGroupMember extends Equatable {
     this.joinedAt,
     this.kudosScore,
     this.photoUrl,
+    this.avatarIndex,
+    this.isOfflineOnly = false,
   });
 
   final String userId;
@@ -18,6 +20,11 @@ final class CareGroupMember extends Equatable {
   final DateTime? joinedAt;
   final int? kudosScore;
   final String? photoUrl;
+  /// Preset avatar (1-based), same as [UserProfile.avatarIndex] when not using [photoUrl].
+  final int? avatarIndex;
+
+  /// True when this row comes from [careGroups] `recipientProfiles` (no app account), not from `members/`.
+  final bool isOfflineOnly;
 
   static CareGroupMember fromDoc(DocumentSnapshot<Map<String, dynamic>> doc) {
     final d = doc.data() ?? {};
@@ -40,6 +47,14 @@ final class CareGroupMember extends Equatable {
       kudos = k.toInt();
     }
 
+    int? av;
+    final avRaw = d["avatarIndex"];
+    if (avRaw is int) {
+      av = avRaw;
+    } else if (avRaw is num) {
+      av = avRaw.toInt();
+    }
+
     return CareGroupMember(
       userId: doc.id,
       displayName: (d["displayName"] as String?)?.trim() ?? "Member",
@@ -47,6 +62,19 @@ final class CareGroupMember extends Equatable {
       joinedAt: joinedAt,
       kudosScore: kudos,
       photoUrl: d["photoUrl"] as String?,
+      avatarIndex: av,
+    );
+  }
+
+  /// Person listed under [careGroups] `recipientProfiles` (e.g. [accessMode] `managed`).
+  static CareGroupMember fromRecipientProfileMap(Map<String, dynamic> m) {
+    final id = (m["id"] as String?)?.trim() ?? "";
+    final name = (m["displayName"] as String?)?.trim() ?? "Recipient";
+    return CareGroupMember(
+      userId: id.isNotEmpty ? id : "unknown_recipient",
+      displayName: name,
+      roles: const ["receives_care"],
+      isOfflineOnly: true,
     );
   }
 
@@ -58,5 +86,7 @@ final class CareGroupMember extends Equatable {
         joinedAt,
         kudosScore,
         photoUrl,
+        avatarIndex,
+        isOfflineOnly,
       ];
 }

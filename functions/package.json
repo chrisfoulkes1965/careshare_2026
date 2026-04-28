@@ -1,0 +1,17 @@
+{
+  "name": "careshare-functions",
+  "description": "Cloud Functions for CareShare (e.g. chat FCM).",
+  "type": "commonjs",
+  "engines": {
+    "node": "22"
+  },
+  "main": "index.js",
+  "scripts": {
+    "lint": "eslint . 2>/dev/null || true"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.6.0",
+    "firebase-functions": "^5.1.0"
+  },
+  "private": true
+}
