@@ -31,6 +31,7 @@ import "../../meetings/models/care_group_meeting.dart";
 import "../../meetings/repository/meetings_repository.dart";
 import "../../tasks/models/care_group_task.dart";
 import "../../tasks/repository/task_repository.dart";
+import "../../user/models/user_profile.dart";
 import "../../user/view/user_account_menu.dart";
 import "../../user/view/widgets/care_user_avatar.dart";
 
@@ -524,6 +525,16 @@ String _nameForUid(String? uid, Map<String, String> byUid) {
   return byUid[uid]?.trim() ?? "Member";
 }
 
+UserProfile _userProfileFromCareGroupMember(CareGroupMember m) {
+  return UserProfile(
+    uid: m.userId,
+    email: "",
+    displayName: m.displayName,
+    photoUrl: m.photoUrl,
+    avatarIndex: m.avatarIndex,
+  );
+}
+
 String _initialsForName(String name) {
   final parts = name.trim().split(RegExp(r"\s+")).where((e) => e.isNotEmpty);
   if (parts.isEmpty) {
@@ -891,6 +902,20 @@ class _Header extends StatelessWidget {
                     style: actionStyle,
                     icon: Icon(
                       Icons.refresh,
+                      size: headerIconSize,
+                      color: h.onBackground,
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: "Care group settings",
+                    onPressed: () {
+                      if (context.mounted) {
+                        context.push("/user-settings/care-group");
+                      }
+                    },
+                    style: actionStyle,
+                    icon: Icon(
+                      Icons.settings_outlined,
                       size: headerIconSize,
                       color: h.onBackground,
                     ),
@@ -1346,10 +1371,12 @@ class _UpcomingScheduleSection extends StatelessWidget {
     return StreamBuilder<List<CareGroupMember>>(
       stream: membersRepository.watchMembersOrRoster(membersCg, dataCareGroupId),
       builder: (context, memSnap) {
+        final members =
+            memSnap.data ?? const <CareGroupMember>[];
         final byUid = {
-          for (final m in memSnap.data ?? <CareGroupMember>[])
-            m.userId: m.displayName,
+          for (final m in members) m.userId: m.displayName,
         };
+        final membersByUid = {for (final m in members) m.userId: m};
         return StreamBuilder<List<CareGroupTask>>(
           stream: taskRepository.isAvailable
               ? taskRepository.watchTasks(dataCg)
@@ -1440,6 +1467,7 @@ class _UpcomingScheduleSection extends StatelessWidget {
                                         return _UpcomingCompactCard(
                                           item: it,
                                           nameByUid: byUid,
+                                          membersByUid: membersByUid,
                                           onTap: () {
                                             if (it.kind == _UpcomingKind.task &&
                                                 it.task != null) {
@@ -1498,11 +1526,13 @@ class _UpcomingCompactCard extends StatelessWidget {
   const _UpcomingCompactCard({
     required this.item,
     required this.nameByUid,
+    required this.membersByUid,
     required this.onTap,
   });
 
   final _UpcomingScheduleItem item;
   final Map<String, String> nameByUid;
+  final Map<String, CareGroupMember> membersByUid;
   final VoidCallback onTap;
 
   @override
@@ -1630,29 +1660,41 @@ class _UpcomingCompactCard extends StatelessWidget {
                                 ),
                               ),
                               if (avatarKey != null)
-                                Container(
+                                SizedBox(
                                   width: 22,
                                   height: 22,
-                                  alignment: Alignment.center,
-                                  decoration: BoxDecoration(
-                                    color: _avatarColor(avatarKey),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Text(
-                                    _initialsForName(
-                                      (assigneeName != null && assigneeName.isNotEmpty)
-                                          ? assigneeName
-                                          : "?",
-                                    ),
-                                    style: TextStyle(
-                                      fontSize: 8,
-                                      fontWeight: FontWeight.w700,
-                                      color: _onAvatar(
-                                        _avatarColor(avatarKey),
-                                        fallback: s.textPrimary,
-                                      ),
-                                    ),
-                                  ),
+                                  child: kind == _UpcomingKind.expense &&
+                                          membersByUid[avatarKey] != null
+                                      ? CareUserAvatar(
+                                          radius: 11,
+                                          profile:
+                                              _userProfileFromCareGroupMember(
+                                            membersByUid[avatarKey]!,
+                                          ),
+                                        )
+                                      : Container(
+                                          alignment: Alignment.center,
+                                          decoration: BoxDecoration(
+                                            color: _avatarColor(avatarKey),
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: Text(
+                                            _initialsForName(
+                                              (assigneeName != null &&
+                                                      assigneeName.isNotEmpty)
+                                                  ? assigneeName
+                                                  : "?",
+                                            ),
+                                            style: TextStyle(
+                                              fontSize: 8,
+                                              fontWeight: FontWeight.w700,
+                                              color: _onAvatar(
+                                                _avatarColor(avatarKey),
+                                                fallback: s.textPrimary,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                 ),
                             ],
                           ),

@@ -72,6 +72,31 @@ service cloud.firestore {
       return hasAnyRole(team, request.auth.uid, ['principal_carer', 'care_group_administrator']);
     }
 
+    function isCareGroupAdministratorForGroup(careGroupDocId) {
+      let team = careTeamId(careGroupDocId);
+      return signedIn() && hasRole(team, request.auth.uid, 'care_group_administrator');
+    }
+
+    /// Updates that only touch shared home labels / linked calendar config (not recipients, pathways, etc.).
+    function careGroupNameThemeOrCalendarPatchOnly() {
+      return diffKeys().hasOnly(['name'])
+        || diffKeys().hasOnly(['themeColor'])
+        || diffKeys().hasOnly(['groupCalendar'])
+        || diffKeys().hasOnly(['name', 'themeColor'])
+        || diffKeys().hasOnly(['name', 'groupCalendar'])
+        || diffKeys().hasOnly(['themeColor', 'groupCalendar'])
+        || diffKeys().hasOnly(['name', 'themeColor', 'groupCalendar']);
+    }
+
+    function careGroupLegacyLinkFieldStable() {
+      return (!resource.data.keys().hasAny(['careGroupId']) && !request.resource.data.keys().hasAny(['careGroupId']))
+        || (
+          resource.data.keys().hasAny(['careGroupId'])
+          && request.resource.data.keys().hasAny(['careGroupId'])
+          && request.resource.data.careGroupId == resource.data.careGroupId
+        );
+    }
+
     function isCarerOrPrincipalForCareGroup(careGroupId) {
       let team = careTeamId(careGroupId);
       return hasAnyRole(team, request.auth.uid, ['principal_carer', 'carer', 'care_group_administrator']);
@@ -336,15 +361,19 @@ service cloud.firestore {
         )
       );
 
-      // Legacy docs: cross-link field [careGroupId] is immutable. Merged (single) docs have no that field.
+      // Name, theme, and linked calendar config: **care_group_administrator only** (principal carer excluded).
+      // Other careGroups fields: principal carer or care group administrator without touching appearance/calendar keys.
       allow update: if signedIn()
-        && isPrincipalCarerOrCareGroupAdminForCareGroup(careGroupId)
         && (
-          (!resource.data.keys().hasAny(['careGroupId']) && !request.resource.data.keys().hasAny(['careGroupId']))
+          (
+            isCareGroupAdministratorForGroup(careGroupId)
+            && careGroupNameThemeOrCalendarPatchOnly()
+            && careGroupLegacyLinkFieldStable()
+          )
           || (
-            resource.data.keys().hasAny(['careGroupId'])
-            && request.resource.data.keys().hasAny(['careGroupId'])
-            && request.resource.data.careGroupId == resource.data.careGroupId
+            isPrincipalCarerOrCareGroupAdminForCareGroup(careGroupId)
+            && !diffKeys().hasAny(['name', 'themeColor', 'groupCalendar'])
+            && careGroupLegacyLinkFieldStable()
           )
         );
 

@@ -26,9 +26,13 @@ final class CareGroupOption extends Equatable {
   bool get isCareGroupAdministrator =>
       roles.contains("care_group_administrator");
 
-  /// Name, theme, calendar settings, invitations, and member-role management.
+  /// Organisation access: invitations, member roles, off-app recipients (principal or administrator).
   bool get canManageCareGroupOrganisation =>
       isPrincipalCarer || isCareGroupAdministrator;
+
+  /// Name, theme colour, and shared calendar connection on the care group document.
+  /// Only [care_group_administrator] may change these (see Firestore rules).
+  bool get canEditCareGroupNameThemeAndCalendar => isCareGroupAdministrator;
 
   /// Optional `careGroups/{id}.themeColor` (ARGB int) for the home theme (header + page).
   final int? themeColor;

@@ -248,7 +248,8 @@ class UserRepository {
     }
   }
 
-  /// Updates `careGroups/{careGroupId}.name` (trimmed, non-empty). Principal-only per rules.
+  /// Updates `careGroups/{careGroupId}.name` (trimmed, non-empty).
+  /// Firestore: [care_group_administrator] only for [name] patches.
   Future<void> updateCareGroupName({
     required String careGroupId,
     required String name,
@@ -264,8 +265,8 @@ class UserRepository {
         .update({"name": t});
   }
 
-  /// Merges [groupCalendar] sub-fields on **`careGroups/{careGroupDocId}`** — the doc that owns
-  /// **`/tasks`**. Omit or pass empty strings to clear a field. Principal-only per rules.
+  /// Merges [groupCalendar] sub-fields on **`careGroups/{careGroupDocId}`**.
+  /// Firestore: [care_group_administrator] only for `groupCalendar` patches.
   Future<void> mergeCareGroupCalendar({
     required String careGroupDocId,
     String? calendarId,
@@ -294,8 +295,7 @@ class UserRepository {
     await ref.update(patch);
   }
 
-  /// Sets `careGroups/{careGroupId}.themeColor` (ARGB int). Only allowed for principal
-  /// carers per Firestore rules; may throw on permission denied.
+  /// Sets `careGroups/{careGroupId}.themeColor` (ARGB int). Firestore: administrator only.
   Future<void> setCareGroupThemeColor({
     required String careGroupId,
     int? argb,

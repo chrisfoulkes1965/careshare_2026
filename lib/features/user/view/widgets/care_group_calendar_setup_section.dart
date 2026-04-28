@@ -8,7 +8,7 @@ import "../../../care_group/models/care_group_option.dart";
 import "../../../profile/profile_cubit.dart";
 
 /// Loads and saves **`groupCalendar.{calendarId,icalUrl,timezone}`** on
-/// **`careGroups/{option.careGroupId}`** (principal organiser or care group administrator).
+/// **`careGroups/{option.careGroupId}`** (care group administrator only — see Firestore rules).
 class CareGroupCalendarSetupSection extends StatefulWidget {
   const CareGroupCalendarSetupSection({super.key, required this.option});
 
@@ -107,7 +107,7 @@ class _CareGroupCalendarSetupSectionState
 
   @override
   Widget build(BuildContext context) {
-    final canManage = widget.option.canManageCareGroupOrganisation;
+    final canManage = widget.option.canEditCareGroupNameThemeAndCalendar;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -141,7 +141,7 @@ class _CareGroupCalendarSetupSectionState
                   "often …@group.calendar.google.com from Google Calendar settings",
               helperText: canManage
                   ? "Stored on this care group for sync and opening in Google Calendar."
-                  : "Only organisers (principal carer or care group administrator) can change these.",
+                  : "Only a care group administrator can change these.",
               enabled: !_saving,
             ),
           ),

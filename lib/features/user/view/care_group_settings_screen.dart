@@ -201,14 +201,14 @@ class _CareGroupSettingsFormState extends State<_CareGroupSettingsForm> {
   @override
   Widget build(BuildContext context) {
     final o = widget.option;
-    final canManageOrganisation = o.canManageCareGroupOrganisation;
+    final canEditAppearance = o.canEditCareGroupNameThemeAndCalendar;
     return _SectionCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
             "You can name this care team, set the theme colour for home, and review people and invitations. "
-            "Principal carers or care group administrators can change the name and colour.",
+            "Only a care group administrator can change the name, theme colour, and linked calendar settings.",
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
@@ -221,13 +221,13 @@ class _CareGroupSettingsFormState extends State<_CareGroupSettingsForm> {
           const SizedBox(height: 8),
           TextField(
             controller: _name,
-            readOnly: !canManageOrganisation,
+            readOnly: !canEditAppearance,
             textCapitalization: TextCapitalization.sentences,
             decoration: InputDecoration(
               border: const OutlineInputBorder(),
               hintText: "Name shown in the app",
-              enabled: canManageOrganisation,
-              suffixIcon: canManageOrganisation && _saving
+              enabled: canEditAppearance,
+              suffixIcon: canEditAppearance && _saving
                   ? const Padding(
                       padding: EdgeInsets.all(12),
                       child: SizedBox(
@@ -239,7 +239,7 @@ class _CareGroupSettingsFormState extends State<_CareGroupSettingsForm> {
                   : null,
             ),
           ),
-          if (canManageOrganisation) ...[
+          if (canEditAppearance) ...[
             const SizedBox(height: 12),
             FilledButton(
               onPressed: _saving
@@ -281,7 +281,7 @@ class _CareGroupSettingsFormState extends State<_CareGroupSettingsForm> {
             const Padding(
               padding: EdgeInsets.only(top: 8),
               child: Text(
-                "Ask someone with organiser access (principal carer or care group administrator) to change the name or theme colour.",
+                "Ask a care group administrator to change the name or theme colour.",
                 style: TextStyle(
                   fontSize: 12,
                   color: AppColors.grey500,
@@ -318,13 +318,13 @@ class _CareGroupSettingsFormState extends State<_CareGroupSettingsForm> {
             ),
             title: const Text("Theme colour…"),
             subtitle: const Text("Tap to choose a colour or reset to default"),
-            onTap: canManageOrganisation
+            onTap: canEditAppearance
                 ? () => _onPickTheme(context, o)
                 : () {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content: Text(
-                            "Only organisers (principal carer or care group administrator) can change the theme colour."),
+                            "Only a care group administrator can change the theme colour."),
                       ),
                     );
                   },
