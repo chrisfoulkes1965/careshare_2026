@@ -138,8 +138,7 @@ class _CreateChannelFab extends StatelessWidget {
         if (me == null) {
           return const SizedBox.shrink();
         }
-        final ok =
-            me.roles.contains("principal_carer") || me.roles.contains("carer");
+        final ok = me.hasCarerOrOrganiserChatAccess;
         if (!ok) {
           return const SizedBox.shrink();
         }

@@ -111,6 +111,7 @@ class SetupRepository {
         "dataCareGroupId": gId,
         "invitedEmail": email,
         "invitedBy": uid,
+        "invitedRoles": ["carer"],
         "status": "pending",
         "createdAt": now,
       });

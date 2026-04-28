@@ -14,6 +14,7 @@ A user `uid` may read/write careGroup-scoped data if they are a member of the **
 |---------------------|------------|
 | `carer` | Carer |
 | `principal_carer` | Principal Carer |
+| `care_group_administrator` | Care group administrator (delegated organisers: settings, invitations, calendar, alongside principal parity in rules) |
 | `receives_care` | Receives Care |
 | `power_of_attorney` | Power of Attorney |
 | `financial_manager` | Financial Manager |

@@ -6,6 +6,7 @@ import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
 
 import "../../../core/constants/app_constants.dart";
+import "../../../core/invite/invitation_landing_preview.dart";
 import "../../../core/invite/pending_invitation_store.dart";
 import "../../../core/theme/app_assets.dart";
 import "../../../core/theme/app_colors.dart";
@@ -13,6 +14,7 @@ import "../bloc/auth_bloc.dart";
 import "../bloc/auth_event.dart";
 import "../bloc/auth_state.dart";
 import "../repository/auth_repository.dart";
+import "widgets/invitation_landing_panel.dart";
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -26,25 +28,71 @@ class _SignInScreenState extends State<SignInScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
-  var _prefilledRouteEmail = false;
+  var _routeParamsApplied = false;
+
+  InvitationLandingPreview? _invitePreview;
+  bool _inviteLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _emailController.addListener(_onEmailEdited);
+  }
+
+  void _onEmailEdited() {
+    setState(() {});
+  }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_prefilledRouteEmail) {
+    if (_routeParamsApplied) {
       return;
     }
+    _routeParamsApplied = true;
     final q = GoRouterState.of(context).uri.queryParameters;
     final e = q["email"]?.trim();
     if (e != null && e.isNotEmpty) {
       _emailController.text = e;
     }
     unawaited(PendingInvitationStore.saveFromQueryIfPresent(q["invite"]));
-    _prefilledRouteEmail = true;
+
+    final invite = q["invite"]?.trim();
+    if (invite != null &&
+        invite.isNotEmpty &&
+        context.read<AuthRepository>().isAuthAvailable) {
+      unawaited(_loadInvitePreview(invite));
+    }
+  }
+
+  Future<void> _loadInvitePreview(String invitationId) async {
+    setState(() {
+      _inviteLoading = true;
+      _invitePreview = null;
+    });
+    try {
+      final p = await InvitationLandingPreview.load(invitationId);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _invitePreview = p;
+        _inviteLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _invitePreview = null;
+        _inviteLoading = false;
+      });
+    }
   }
 
   @override
   void dispose() {
+    _emailController.removeListener(_onEmailEdited);
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
@@ -69,6 +117,10 @@ class _SignInScreenState extends State<SignInScreen> {
           builder: (context, state) {
             final firebaseReady =
                 context.read<AuthRepository>().isAuthAvailable;
+            final inviteParam =
+                GoRouterState.of(context).uri.queryParameters["invite"];
+            final hasInvite =
+                inviteParam != null && inviteParam.trim().isNotEmpty;
 
             return LayoutBuilder(
               builder: (context, constraints) {
@@ -109,7 +161,9 @@ class _SignInScreenState extends State<SignInScreen> {
                                 ),
                                 const SizedBox(height: 8),
                                 Text(
-                                  "Sign in to coordinate care",
+                                  hasInvite
+                                      ? "Sign in or create an account to accept your invitation"
+                                      : "Sign in to coordinate care",
                                   textAlign: TextAlign.center,
                                   style: Theme.of(context)
                                       .textTheme
@@ -118,11 +172,35 @@ class _SignInScreenState extends State<SignInScreen> {
                                         color: AppColors.grey500,
                                       ),
                                 ),
+                                if (_inviteLoading) ...[
+                                  const SizedBox(height: 14),
+                                  const LinearProgressIndicator(minHeight: 2),
+                                ],
                                 if (!firebaseReady) ...[
                                   const SizedBox(height: 16),
                                   const _FirebaseSetupBanner(),
                                 ],
-                                const SizedBox(height: 32),
+                                if (_invitePreview != null) ...[
+                                  const SizedBox(height: 16),
+                                  InvitationLandingPanel(
+                                    preview: _invitePreview!,
+                                  ),
+                                ] else if (hasInvite &&
+                                    !_inviteLoading &&
+                                    firebaseReady) ...[
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    "This invitation couldn't be loaded (it may "
+                                    "have expired). You can still sign in or "
+                                    "create an account with the email address "
+                                    "your invite was sent to.",
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(color: AppColors.grey500),
+                                  ),
+                                ],
+                                const SizedBox(height: 24),
                                 TextFormField(
                                   controller: _emailController,
                                   keyboardType: TextInputType.emailAddress,
@@ -130,7 +208,8 @@ class _SignInScreenState extends State<SignInScreen> {
                                   decoration:
                                       const InputDecoration(labelText: "Email"),
                                   validator: (value) {
-                                    if (value == null || value.trim().isEmpty) {
+                                    if (value == null ||
+                                        value.trim().isEmpty) {
                                       return "Enter your email";
                                     }
                                     if (!value.contains("@")) {
@@ -139,6 +218,35 @@ class _SignInScreenState extends State<SignInScreen> {
                                     return null;
                                   },
                                 ),
+                                if (_invitePreview != null &&
+                                    _emailController.text
+                                            .trim()
+                                            .toLowerCase() ==
+                                        _invitePreview!.invitedEmail) ...[
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    "Invited as ${_invitePreview!.invitedEmail}",
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodySmall
+                                        ?.copyWith(color: AppColors.grey500),
+                                  ),
+                                  Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: TextButton(
+                                      onPressed: () async {
+                                        await PendingInvitationStore.clear();
+                                        if (!context.mounted) {
+                                          return;
+                                        }
+                                        context.go("/sign-in");
+                                      },
+                                      child: const Text(
+                                        "Not your email? Open sign-in without this link",
+                                      ),
+                                    ),
+                                  ),
+                                ],
                                 const SizedBox(height: 12),
                                 TextFormField(
                                   controller: _passwordController,
@@ -223,7 +331,8 @@ class _SignInScreenState extends State<SignInScreen> {
                                   onPressed:
                                       firebaseReady ? _submitGoogle : null,
                                   icon: const Icon(Icons.login),
-                                  label: const Text("Continue with Google"),
+                                  label:
+                                      const Text("Continue with Google"),
                                 ),
                               ],
                             ),

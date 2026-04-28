@@ -2,6 +2,7 @@ import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
 
+import "../../../core/care/role_label.dart";
 import "../../members/models/care_group_member.dart";
 import "../../members/repository/members_repository.dart";
 import "../../profile/profile_cubit.dart";
@@ -9,6 +10,7 @@ import "../../profile/profile_state.dart";
 import "../cubit/invitations_cubit.dart";
 import "../cubit/invitations_state.dart";
 import "../repository/invitation_repository.dart";
+import "../widgets/invite_email_roles_dialog.dart";
 
 class InvitationsScreen extends StatelessWidget {
   const InvitationsScreen({super.key});
@@ -57,7 +59,7 @@ class InvitationsScreen extends StatelessWidget {
                 break;
               }
             }
-            final canManage = me?.roles.contains("principal_carer") ?? false;
+            final canManage = me?.canAssignMemberRoles ?? false;
             return BlocProvider(
               key: ObjectKey(cg),
               create: (context) => InvitationsCubit(
@@ -146,10 +148,14 @@ class _InvitationsView extends StatelessWidget {
                 itemBuilder: (context, i) {
                   final inv = state.list[i];
                   final pending = inv.status == "pending";
+                  final roleLine = inv.invitedRoles
+                      .map(careGroupRoleLabel)
+                      .join(", ");
                   return Card(
                     child: ListTile(
                       title: Text(inv.invitedEmail),
                       subtitle: Text(
+                        "Roles: $roleLine\n"
                         "Invitation: ${inv.status}\n${inv.emailStatusLine}",
                       ),
                       isThreeLine: true,
@@ -272,37 +278,10 @@ class _InvitationsView extends StatelessWidget {
   }
 
   Future<void> _invite(BuildContext context) async {
-    final email = await showDialog<String>(
-      context: context,
-      builder: (ctx) {
-        final c = TextEditingController();
-        return AlertDialog(
-          title: const Text("Invite by email"),
-          content: TextField(
-            controller: c,
-            keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(
-              labelText: "Email address",
-            ),
-            autofocus: true,
-            onSubmitted: (v) => Navigator.of(ctx).pop(v),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text("Cancel"),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(ctx).pop(c.text),
-              child: const Text("Send"),
-            ),
-          ],
-        );
-      },
-    );
-    if (email == null || !email.contains("@") || !context.mounted) return;
+    final result = await showInviteEmailRolesDialog(context);
+    if (result == null || !context.mounted) return;
     try {
-      await context.read<InvitationsCubit>().invite(email);
+      await context.read<InvitationsCubit>().invite(result.email, result.roles);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(

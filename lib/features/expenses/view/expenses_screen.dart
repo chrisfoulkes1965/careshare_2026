@@ -30,7 +30,8 @@ bool _canViewExpenses(CareGroupMember? me) {
   }
   return me.roles.contains("principal_carer") ||
       me.roles.contains("financial_manager") ||
-      me.roles.contains("power_of_attorney");
+      me.roles.contains("power_of_attorney") ||
+      me.roles.contains("care_group_administrator");
 }
 
 bool _canEditExpenses(CareGroupMember? me) {
@@ -38,7 +39,8 @@ bool _canEditExpenses(CareGroupMember? me) {
     return false;
   }
   return me.roles.contains("principal_carer") ||
-      me.roles.contains("financial_manager");
+      me.roles.contains("financial_manager") ||
+      me.roles.contains("care_group_administrator");
 }
 
 String _formatMoney(double amount, String currency) {

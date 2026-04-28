@@ -105,6 +105,16 @@ async function deliverInvitationEmail(docRef, d, invitationId) {
     groupName = nData;
   }
 
+  // Public landing copy for /sign-in?invite=… (readable when status is pending; see Firestore rules).
+  try {
+    await docRef.update({
+      inviteLandingCareGroupName: groupName,
+      inviteLandingInviterName: inviterName,
+    });
+  } catch (e) {
+    console.error("deliverInvitationEmail: inviteLanding fields failed", e);
+  }
+
   const base = String(careshareAppUrl.value() || "https://careshare-2026.web.app")
     .replace(/\/$/, "");
   const signInUrl = new URL("/sign-in", base + "/");
@@ -358,4 +368,6 @@ exports.onCareInvitationResendEmail = onDocumentUpdated(
 );
 
 const {syncToGoogleCalendar} = require("./gcal/syncToGoogleCalendar");
+const {syncInboundGoogleCalendar} = require("./gcal/syncInboundGoogleCalendar");
 exports.syncToGoogleCalendar = syncToGoogleCalendar;
+exports.syncInboundGoogleCalendar = syncInboundGoogleCalendar;

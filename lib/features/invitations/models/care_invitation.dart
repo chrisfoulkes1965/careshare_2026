@@ -1,5 +1,6 @@
 import "package:cloud_firestore/cloud_firestore.dart";
 
+import "../../../core/care/role_label.dart";
 import "../../../core/firebase/firestore_remote_compat.dart";
 
 /// Top-level `invitations/{id}`.
@@ -11,6 +12,7 @@ final class CareInvitation {
     required this.invitedEmail,
     required this.invitedBy,
     required this.status,
+    this.invitedRoles = const [],
     this.createdAt,
     this.emailSentAt,
     this.emailDelivery,
@@ -23,6 +25,8 @@ final class CareInvitation {
   final String invitedEmail;
   final String invitedBy;
   final String status;
+  /// Roles the invitee will receive when they accept (stored on [invitations/{id}]).
+  final List<String> invitedRoles;
   final DateTime? createdAt;
 
   /// Set by Cloud Function [onCareInvitationCreated] after Resend (or attempted).
@@ -66,6 +70,12 @@ final class CareInvitation {
     final data = d.data();
     final created = data["createdAt"];
     final sent = data["emailSentAt"];
+    final rawRoles = data["invitedRoles"];
+    final invitedRoles = rawRoles is List
+        ? normalizeAssignableCareGroupRoles(
+            rawRoles.map((e) => e.toString()).toList(),
+          )
+        : const <String>["carer"];
     return CareInvitation(
       id: d.id,
       careGroupId: (data["careGroupId"] as String?) ?? "",
@@ -73,6 +83,7 @@ final class CareInvitation {
       invitedEmail: (data["invitedEmail"] as String?)?.toLowerCase() ?? "",
       invitedBy: (data["invitedBy"] as String?) ?? "",
       status: (data["status"] as String?) ?? "pending",
+      invitedRoles: invitedRoles,
       createdAt: created is Timestamp ? created.toDate() : null,
       emailSentAt: sent is Timestamp ? sent.toDate() : null,
       emailDelivery: (data["emailDelivery"] as String?)?.trim(),

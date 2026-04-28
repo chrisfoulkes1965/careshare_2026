@@ -1,3 +1,16 @@
+/// Normalizes arbitrary role strings against [kAssignableCareGroupRoles]; defaults to [carer].
+List<String> normalizeAssignableCareGroupRoles(List<String> raw) {
+  final allow = Set<String>.from(kAssignableCareGroupRoles);
+  final out = <String>[];
+  for (final r in raw) {
+    final t = r.trim();
+    if (allow.contains(t) && !out.contains(t)) {
+      out.add(t);
+    }
+  }
+  return out.isEmpty ? const <String>["carer"] : out;
+}
+
 /// Roles the principal or care group administrator can assign on the members screen (display order).
 const List<String> kAssignableCareGroupRoles = [
   "principal_carer",

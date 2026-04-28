@@ -15,6 +15,7 @@ import "../../user/models/user_profile.dart";
 import "../../user/repository/user_repository.dart";
 import "../../user/view/widgets/care_user_avatar.dart";
 import "../../invitations/repository/invitation_repository.dart";
+import "../../invitations/widgets/invite_email_roles_dialog.dart";
 import "../cubit/members_cubit.dart";
 import "../cubit/members_state.dart";
 import "../models/care_group_member.dart";
@@ -685,45 +686,19 @@ Future<void> _showInviteByEmailDialog(
   required String careGroupId,
   required String dataCareGroupId,
 }) async {
-  final email = TextEditingController();
-  final ok = await showDialog<bool>(
-    context: context,
-    builder: (ctx) {
-      return AlertDialog(
-        title: const Text("Invite by email"),
-        content: TextField(
-          controller: email,
-          keyboardType: TextInputType.emailAddress,
-          decoration: const InputDecoration(
-            labelText: "Email address",
-            hintText: "name@example.com",
-          ),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text("Cancel"),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text("Send invite"),
-          ),
-        ],
-      );
-    },
-  );
-  if (ok != true || !context.mounted) {
-    email.dispose();
+  final result = await showInviteEmailRolesDialog(context);
+  if (result == null || !context.mounted) {
     return;
   }
+
   final repo = context.read<InvitationRepository>();
   final ms = ScaffoldMessenger.of(context);
   try {
     await repo.createInvitation(
       careGroupId: careGroupId,
       dataCareGroupId: dataCareGroupId,
-      email: email.text,
+      email: result.email,
+      invitedRoles: result.roles,
     );
     if (context.mounted) {
       ms.showSnackBar(
@@ -734,8 +709,6 @@ Future<void> _showInviteByEmailDialog(
     if (context.mounted) {
       ms.showSnackBar(SnackBar(content: Text(e.toString())));
     }
-  } finally {
-    email.dispose();
   }
 }
 

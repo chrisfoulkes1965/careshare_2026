@@ -1,5 +1,6 @@
 import "package:cloud_firestore/cloud_firestore.dart";
 import "package:firebase_auth/firebase_auth.dart";
+import "../../../core/care/role_label.dart";
 
 import "../models/care_invitation.dart";
 
@@ -32,6 +33,7 @@ class InvitationRepository {
     required String careGroupId,
     required String dataCareGroupId,
     required String email,
+    required List<String> invitedRoles,
   }) async {
     if (!_firebaseReady) return;
     final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -42,14 +44,30 @@ class InvitationRepository {
     if (!trimmed.contains("@")) {
       throw ArgumentError("Enter a valid email address.");
     }
+    final roles = normalizeAssignableCareGroupRoles(invitedRoles);
+    if (roles.isEmpty) {
+      throw ArgumentError("Choose at least one role.");
+    }
+
     await FirebaseFirestore.instance.collection("invitations").add({
       "careGroupId": careGroupId,
       "dataCareGroupId": dataCareGroupId,
       "invitedEmail": trimmed,
       "invitedBy": uid,
+      "invitedRoles": roles,
       "status": "pending",
       "createdAt": FieldValue.serverTimestamp(),
     });
+  }
+
+  static List<String> _rolesFromFirestore(Map<String, dynamic> d) {
+    final raw = d["invitedRoles"];
+    if (raw is List) {
+      return normalizeAssignableCareGroupRoles(
+        raw.map((e) => e.toString()).toList(),
+      );
+    }
+    return const ["carer"];
   }
 
   /// Records from an email link: adds the user to [careGroups/{careGroupId}/members/{uid}], marks
@@ -58,6 +76,7 @@ class InvitationRepository {
   Future<String?> redeemInvitationForSignedInUser({
     required String invitationId,
     required String displayName,
+    int? avatarIndex,
   }) async {
     if (!_firebaseReady) {
       return null;
@@ -97,8 +116,6 @@ class InvitationRepository {
       return cg;
     }
 
-    final dn = displayName.trim().isEmpty ? _emailLocal(u.email) : displayName.trim();
-
     await FirebaseFirestore.instance.runTransaction((txn) async {
       final snap = await txn.get(iref);
       if (!snap.exists) {
@@ -112,33 +129,60 @@ class InvitationRepository {
       if (careGroupId == null || careGroupId.isEmpty) {
         return;
       }
+      final targetRoles = _rolesFromFirestore(dd);
+      final dn =
+          displayName.trim().isEmpty ? _emailLocal(u.email) : displayName.trim();
+
       final mref = FirebaseFirestore.instance
           .collection("careGroups")
           .doc(careGroupId)
           .collection("members")
           .doc(u.uid);
       final mes = await txn.get(mref);
-      const adding = "carer";
       if (mes.exists) {
         final raw = mes.data()?["roles"];
-        final roles = raw is List
+        final existing = raw is List
             ? raw.map((e) => e.toString()).toList()
             : <String>[];
-        if (!roles.contains(adding)) {
-          txn.update(mref, {"roles": FieldValue.arrayUnion([adding])});
+        final merged = mergeRolePreferOrder(existing, targetRoles);
+        final patch = <String, dynamic>{"roles": merged, "displayName": dn};
+        if (avatarIndex != null && avatarIndex >= 1) {
+          patch["avatarIndex"] = avatarIndex;
         }
+        txn.update(mref, patch);
       } else {
         txn.set(mref, {
-          "roles": [adding],
+          "roles": targetRoles,
           "displayName": dn,
           "joinedAt": FieldValue.serverTimestamp(),
           "kudosScore": 0,
+          if (avatarIndex != null && avatarIndex >= 1) "avatarIndex": avatarIndex,
         });
       }
       txn.update(iref, {"status": "accepted"});
     });
 
     return cg;
+  }
+
+  /// Union of [existing] and [incoming], ordered by [kAssignableCareGroupRoles].
+  static List<String> mergeRolePreferOrder(
+    List<String> existing,
+    List<String> incoming,
+  ) {
+    final want = <String>{...existing, ...incoming};
+    final out = <String>[];
+    for (final r in kAssignableCareGroupRoles) {
+      if (want.contains(r)) {
+        out.add(r);
+      }
+    }
+    for (final r in want) {
+      if (!out.contains(r)) {
+        out.add(r);
+      }
+    }
+    return out.isEmpty ? const ["carer"] : out;
   }
 
   static String _emailLocal(String? email) {

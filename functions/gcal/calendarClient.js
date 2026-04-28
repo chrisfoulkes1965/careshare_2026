@@ -65,9 +65,32 @@ async function updateEvent(calendar, calendarId, eventId, body) {
   });
 }
 
+/**
+ * @param {import("googleapis").calendar_v3.Calendar} calendar
+ * @param {string} calendarId
+ * @param {string} timeMin RFC3339
+ * @param {string} timeMax RFC3339
+ * @return {Promise<import("googleapis").calendar_v3.Schema$Event[]>}
+ */
+async function listEventsBetween(calendar, calendarId, timeMin, timeMax) {
+  /** @type {import("googleapis").calendar_v3.Params$Resource$Events$List>} */
+  const req = {
+    calendarId,
+    timeMin,
+    timeMax,
+    singleEvents: true,
+    orderBy: "startTime",
+    maxResults: 2500,
+    showDeleted: false,
+  };
+  const res = await calendar.events.list(req);
+  return res.data.items || [];
+}
+
 module.exports = {
   createCalendarClient,
   deleteEvent,
   insertEvent,
   updateEvent,
+  listEventsBetween,
 };

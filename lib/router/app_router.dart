@@ -9,6 +9,7 @@ import "../features/care_pathway/view/pathways_screen.dart";
 import "../features/home/view/coming_soon_screen.dart";
 import "../features/care_group/view/care_group_select_screen.dart";
 import "../features/home/view/home_screen.dart";
+import "../features/invite_profile/view/invite_profile_screen.dart";
 import "../features/calendar/view/calendar_screen.dart";
 import "../features/chat/view/channel_chat_screen.dart";
 import "../features/chat/view/chat_channels_screen.dart";
@@ -56,6 +57,7 @@ abstract final class AppRouteNames {
   static const userSettingsProfile = "userSettingsProfile";
   static const userSettingsCareGroups = "userSettingsCareGroups";
   static const userSettingsSecurity = "userSettingsSecurity";
+  static const inviteProfile = "inviteProfile";
 }
 
 abstract final class AppRouter {
@@ -94,6 +96,14 @@ abstract final class AppRouter {
         if (profileState is ProfileReady) {
           final profile = profileState.profile;
           final pr = profileState;
+
+          if (pr.needsInvitationProfileCompletion &&
+              (pr.pendingInvitationId ?? "").trim().isNotEmpty) {
+            if (loc == "/invite-profile") {
+              return null;
+            }
+            return "/invite-profile";
+          }
 
           if (profile.needsWizard) {
             if (!loc.startsWith("/setup")) {
@@ -141,6 +151,11 @@ abstract final class AppRouter {
           path: "/register",
           name: AppRouteNames.register,
           builder: (context, state) => const RegisterScreen(),
+        ),
+        GoRoute(
+          path: "/invite-profile",
+          name: AppRouteNames.inviteProfile,
+          builder: (context, state) => const InviteProfileScreen(),
         ),
         GoRoute(
           path: "/setup",

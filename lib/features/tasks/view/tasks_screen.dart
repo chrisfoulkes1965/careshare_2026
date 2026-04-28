@@ -214,13 +214,15 @@ class _TasksView extends StatelessWidget {
         ),
         trailing: IconButton(
           icon: const Icon(Icons.delete_outline),
-          tooltip: "Delete task (principal only)",
+          tooltip: "Delete task (principal or administrator)",
           onPressed: () async {
             final go = await showDialog<bool>(
               context: context,
               builder: (ctx) => AlertDialog(
                 title: const Text("Delete task?"),
-                content: const Text("This can only be completed if you are the principal carer in Firestore rules."),
+                content: const Text(
+                  "Deletion requires principal carer or care group administrator access in Firestore rules.",
+                ),
                 actions: [
                   TextButton(
                     onPressed: () => Navigator.of(ctx).pop(false),

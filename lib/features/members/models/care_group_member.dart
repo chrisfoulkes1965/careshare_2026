@@ -70,6 +70,12 @@ final class CareGroupMember extends Equatable {
       roles.contains("principal_carer") ||
       roles.contains("care_group_administrator");
 
+  /// Matches Firestore [isCarerOrPrincipalForCareGroup] (includes care group administrator).
+  bool get hasCarerOrOrganiserChatAccess =>
+      roles.contains("principal_carer") ||
+      roles.contains("carer") ||
+      roles.contains("care_group_administrator");
+
   /// Person listed under [careGroups] `recipientProfiles` (e.g. [accessMode] `managed`).
   static CareGroupMember fromRecipientProfileMap(Map<String, dynamic> m) {
     final id = (m["id"] as String?)?.trim() ?? "";

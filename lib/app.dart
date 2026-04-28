@@ -18,6 +18,7 @@ import "features/medications/repository/medication_care_group_settings_repositor
 import "features/medications/repository/medications_repository.dart";
 import "features/medications/view/medication_dose_route_args.dart";
 import "features/meetings/repository/meetings_repository.dart";
+import "features/calendar/repository/linked_calendar_events_repository.dart";
 import "features/members/repository/members_repository.dart";
 import "features/notes/repository/notes_repository.dart";
 import "features/profile/profile_cubit.dart";
@@ -197,26 +198,31 @@ class CareShareRoot extends StatelessWidget {
                               create: (_) => MeetingsRepository(
                                   firebaseReady: firebaseReady),
                               child: RepositoryProvider(
-                                create: (_) =>
-                                    MedicationCareGroupSettingsRepository(
-                                        firebaseReady: firebaseReady),
+                                create: (_) => LinkedCalendarEventsRepository(
+                                  firebaseReady: firebaseReady,
+                                ),
                                 child: RepositoryProvider(
-                                  create: (_) => MedicationsRepository(
-                                      firebaseReady: firebaseReady),
-                                  child: BlocProvider(
-                                    create: (context) => AuthBloc(
-                                      repository:
-                                          context.read<AuthRepository>(),
-                                    ),
+                                  create: (_) =>
+                                      MedicationCareGroupSettingsRepository(
+                                          firebaseReady: firebaseReady),
+                                  child: RepositoryProvider(
+                                    create: (_) => MedicationsRepository(
+                                        firebaseReady: firebaseReady),
                                     child: BlocProvider(
-                                      create: (context) => ProfileCubit(
-                                        authBloc: context.read<AuthBloc>(),
-                                        userRepository:
-                                            context.read<UserRepository>(),
-                                        invitationRepository: context
-                                            .read<InvitationRepository>(),
+                                      create: (context) => AuthBloc(
+                                        repository:
+                                            context.read<AuthRepository>(),
                                       ),
-                                      child: const CareShareApp(),
+                                      child: BlocProvider(
+                                        create: (context) => ProfileCubit(
+                                          authBloc: context.read<AuthBloc>(),
+                                          userRepository:
+                                              context.read<UserRepository>(),
+                                          invitationRepository: context
+                                              .read<InvitationRepository>(),
+                                        ),
+                                        child: const CareShareApp(),
+                                      ),
                                     ),
                                   ),
                                 ),

@@ -1,8 +1,11 @@
+import "dart:async" show unawaited;
+
 import "package:firebase_auth/firebase_auth.dart" show User;
 import "package:flutter/material.dart";
 import "package:flutter/services.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
+import "package:url_launcher/url_launcher.dart";
 
 import "../../../core/care/role_label.dart";
 import "../../../core/theme/app_assets.dart";
@@ -18,6 +21,14 @@ import "../../members/repository/members_repository.dart";
 import "../../profile/profile_cubit.dart";
 import "../../profile/profile_state.dart";
 import "../../setup_wizard/repository/setup_repository.dart";
+import "../../calendar/models/linked_calendar_event.dart";
+import "../../calendar/repository/linked_calendar_events_repository.dart";
+import "../../expenses/models/care_group_expense.dart";
+import "../../expenses/repository/expenses_repository.dart";
+import "../../medications/models/care_group_medication.dart";
+import "../../medications/repository/medications_repository.dart";
+import "../../meetings/models/care_group_meeting.dart";
+import "../../meetings/repository/meetings_repository.dart";
 import "../../tasks/models/care_group_task.dart";
 import "../../tasks/repository/task_repository.dart";
 import "../../user/view/user_account_menu.dart";
@@ -260,6 +271,193 @@ class _ActivityRowModel {
   final VoidCallback onPressed;
 }
 
+const int _kMaxUpcomingScheduleItems = 28;
+
+enum _UpcomingKind { task, meeting, linkedGcal, medication, expense }
+
+final class _UpcomingScheduleItem {
+  const _UpcomingScheduleItem._({
+    required this.sortAt,
+    required this.kind,
+    this.task,
+    this.meeting,
+    this.linked,
+    this.medication,
+    this.expense,
+  });
+
+  factory _UpcomingScheduleItem.task(CareGroupTask t) {
+    return _UpcomingScheduleItem._(
+      sortAt: t.dueAt!,
+      kind: _UpcomingKind.task,
+      task: t,
+    );
+  }
+
+  factory _UpcomingScheduleItem.meeting(CareGroupMeeting m) {
+    return _UpcomingScheduleItem._(
+      sortAt: m.meetingAt!,
+      kind: _UpcomingKind.meeting,
+      meeting: m,
+    );
+  }
+
+  factory _UpcomingScheduleItem.linkedGcal(LinkedCalendarEvent e) {
+    return _UpcomingScheduleItem._(
+      sortAt: e.startAt,
+      kind: _UpcomingKind.linkedGcal,
+      linked: e,
+    );
+  }
+
+  factory _UpcomingScheduleItem.medication(
+    CareGroupMedication m,
+    DateTime sortAt,
+  ) {
+    return _UpcomingScheduleItem._(
+      sortAt: sortAt,
+      kind: _UpcomingKind.medication,
+      medication: m,
+    );
+  }
+
+  factory _UpcomingScheduleItem.expense(CareGroupExpense e) {
+    return _UpcomingScheduleItem._(
+      sortAt: e.spentAt,
+      kind: _UpcomingKind.expense,
+      expense: e,
+    );
+  }
+
+  final DateTime sortAt;
+  final _UpcomingKind kind;
+  final CareGroupTask? task;
+  final CareGroupMeeting? meeting;
+  final LinkedCalendarEvent? linked;
+  final CareGroupMedication? medication;
+  final CareGroupExpense? expense;
+}
+
+int _pluginDayFromDartWeekday(int dartWeekday) {
+  if (dartWeekday == DateTime.sunday) {
+    return 1;
+  }
+  return dartWeekday + 1;
+}
+
+bool _medicationOccursOnDay(CareGroupMedication m, DateTime day) {
+  if (!m.reminderEnabled || m.reminderTimes.isEmpty || !m.hasValidReminderSchedule) {
+    return false;
+  }
+  return switch (m.scheduleType) {
+    MedicationScheduleType.daily => true,
+    MedicationScheduleType.weekly =>
+      m.scheduleWeekdays.contains(_pluginDayFromDartWeekday(day.weekday)),
+    MedicationScheduleType.monthly => m.scheduleMonthDays.contains(day.day),
+  };
+}
+
+/// Next reminder moment for sorting (today’s next slot, or next day’s first).
+DateTime? _nextMedicationReminderSortTime(CareGroupMedication m) {
+  if (!m.reminderEnabled || !m.hasValidReminderSchedule || m.reminderTimes.isEmpty) {
+    return null;
+  }
+  final times = [...m.reminderTimes]
+    ..sort((a, b) => (a.hour * 60 + a.minute).compareTo(b.hour * 60 + b.minute));
+  final now = DateTime.now();
+  final start = DateTime(now.year, now.month, now.day);
+  for (var add = 0; add < 21; add++) {
+    final day = start.add(Duration(days: add));
+    if (!_medicationOccursOnDay(m, day)) {
+      continue;
+    }
+    for (final t in times) {
+      final cand = DateTime(day.year, day.month, day.day, t.hour, t.minute);
+      if (!cand.isBefore(now.subtract(const Duration(seconds: 45)))) {
+        return cand;
+      }
+    }
+  }
+  return null;
+}
+
+List<_UpcomingScheduleItem> _mergeUpcomingScheduleItems({
+  required List<CareGroupTask> tasks,
+  required List<CareGroupMeeting> meetings,
+  required List<LinkedCalendarEvent> linkedGcalEvents,
+  required List<CareGroupMedication> medications,
+  required List<CareGroupExpense> expenses,
+}) {
+  final threshold = DateTime.now().subtract(const Duration(seconds: 45));
+  final rows = <_UpcomingScheduleItem>[];
+  for (final t in tasks) {
+    final d = t.dueAt;
+    if (t.isDone || d == null || !d.isAfter(threshold)) {
+      continue;
+    }
+    rows.add(_UpcomingScheduleItem.task(t));
+  }
+  for (final m in meetings) {
+    final d = m.meetingAt;
+    if (d == null || !d.isAfter(threshold)) {
+      continue;
+    }
+    rows.add(_UpcomingScheduleItem.meeting(m));
+  }
+  for (final e in linkedGcalEvents) {
+    if (!e.startAt.isAfter(threshold)) {
+      continue;
+    }
+    rows.add(_UpcomingScheduleItem.linkedGcal(e));
+  }
+  for (final med in medications) {
+    final at = _nextMedicationReminderSortTime(med);
+    if (at == null) {
+      continue;
+    }
+    rows.add(_UpcomingScheduleItem.medication(med, at));
+  }
+  final now = DateTime.now();
+  final exCandidates = expenses.where((e) {
+    final sp = e.spentAt;
+    final futureOrToday = sp.isAfter(now.subtract(const Duration(seconds: 30)));
+    final last14 = now.subtract(const Duration(days: 14));
+    final recentPast = !sp.isBefore(last14) && !sp.isAfter(now);
+    return futureOrToday || recentPast;
+  }).toList();
+  exCandidates.sort((a, b) {
+    final af = a.spentAt.isAfter(now.subtract(const Duration(seconds: 30)));
+    final bf = b.spentAt.isAfter(now.subtract(const Duration(seconds: 30)));
+    if (af != bf) {
+      return af ? -1 : 1;
+    }
+    return a.spentAt.compareTo(b.spentAt);
+  });
+  for (final ex in exCandidates.take(7)) {
+    rows.add(_UpcomingScheduleItem.expense(ex));
+  }
+  rows.sort((a, b) => a.sortAt.compareTo(b.sortAt));
+  return rows.take(_kMaxUpcomingScheduleItems).toList();
+}
+
+Future<void> _openLinkedCalendarFromHome(
+  BuildContext context,
+  LinkedCalendarEvent e,
+) async {
+  final href = e.htmlLink?.trim();
+  if (href != null && href.isNotEmpty) {
+    final u = Uri.tryParse(href);
+    if (u != null && await canLaunchUrl(u)) {
+      await launchUrl(u, mode: LaunchMode.externalApplication);
+      return;
+    }
+  }
+  if (!context.mounted) {
+    return;
+  }
+  await context.push("/calendar");
+}
+
 List<CareGroupTask> _urgentOpenTasksFirst(List<CareGroupTask> all) {
   final open = all.where((t) => !t.isDone).toList();
   int rank(CareGroupTask t) {
@@ -452,6 +650,23 @@ class HomeLandingView extends StatelessWidget {
                     careGroupId: memberDocId,
                     dataCareGroupId: dataId,
                     membersRepository: context.read<MembersRepository>(),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 0, 18, 0),
+                  child: _UpcomingScheduleSection(
+                    memberListCareGroupId: memberDocId,
+                    dataCareGroupId: dataId,
+                    membersRepository: context.read<MembersRepository>(),
+                    taskRepository: context.read<TaskRepository>(),
+                    meetingsRepository: context.read<MeetingsRepository>(),
+                    linkedCalendarEventsRepository:
+                        context.read<LinkedCalendarEventsRepository>(),
+                    medicationsRepository:
+                        context.read<MedicationsRepository>(),
+                    expensesRepository:
+                        context.read<ExpensesRepository>(),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -1084,6 +1299,395 @@ class _PersonChip extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _UpcomingScheduleSection extends StatelessWidget {
+  const _UpcomingScheduleSection({
+    required this.memberListCareGroupId,
+    required this.dataCareGroupId,
+    required this.membersRepository,
+    required this.taskRepository,
+    required this.meetingsRepository,
+    required this.linkedCalendarEventsRepository,
+    required this.medicationsRepository,
+    required this.expensesRepository,
+  });
+
+  final String? memberListCareGroupId;
+  final String? dataCareGroupId;
+  final MembersRepository membersRepository;
+  final TaskRepository taskRepository;
+  final MeetingsRepository meetingsRepository;
+  final LinkedCalendarEventsRepository linkedCalendarEventsRepository;
+  final MedicationsRepository medicationsRepository;
+  final ExpensesRepository expensesRepository;
+
+  @override
+  Widget build(BuildContext context) {
+    if (memberListCareGroupId == null ||
+        memberListCareGroupId!.isEmpty ||
+        dataCareGroupId == null ||
+        dataCareGroupId!.isEmpty ||
+        !membersRepository.isAvailable) {
+      return const SizedBox.shrink();
+    }
+    if (!taskRepository.isAvailable &&
+        !meetingsRepository.isAvailable &&
+        !linkedCalendarEventsRepository.isAvailable &&
+        !medicationsRepository.isAvailable &&
+        !expensesRepository.isAvailable) {
+      return const SizedBox.shrink();
+    }
+    final membersCg = memberListCareGroupId!;
+    final dataCg = dataCareGroupId!;
+    return StreamBuilder<List<CareGroupMember>>(
+      stream: membersRepository.watchMembersOrRoster(membersCg, dataCareGroupId),
+      builder: (context, memSnap) {
+        final byUid = {
+          for (final m in memSnap.data ?? <CareGroupMember>[])
+            m.userId: m.displayName,
+        };
+        return StreamBuilder<List<CareGroupTask>>(
+          stream: taskRepository.isAvailable
+              ? taskRepository.watchTasks(dataCg)
+              : Stream<List<CareGroupTask>>.value(const <CareGroupTask>[]),
+          builder: (context, taskSnap) {
+            return StreamBuilder<List<CareGroupMeeting>>(
+              stream: meetingsRepository.isAvailable
+                  ? meetingsRepository.watchMeetings(dataCg)
+                  : Stream<List<CareGroupMeeting>>.value(const <CareGroupMeeting>[]),
+              builder: (context, meetSnap) {
+                return StreamBuilder<List<LinkedCalendarEvent>>(
+                  stream: linkedCalendarEventsRepository.isAvailable
+                      ? linkedCalendarEventsRepository.watchLinkedEvents(dataCg)
+                      : Stream<List<LinkedCalendarEvent>>.value(
+                          const <LinkedCalendarEvent>[],
+                        ),
+                  builder: (context, linkSnap) {
+                    return StreamBuilder<List<CareGroupMedication>>(
+                      stream: medicationsRepository.isAvailable
+                          ? medicationsRepository.watchMedications(dataCg)
+                          : Stream<List<CareGroupMedication>>.value(
+                              const <CareGroupMedication>[],
+                            ),
+                      builder: (context, medSnap) {
+                        return StreamBuilder<List<CareGroupExpense>>(
+                          stream: expensesRepository.isAvailable
+                              ? expensesRepository.watchExpenses(dataCg)
+                              : Stream<List<CareGroupExpense>>.value(
+                                  const <CareGroupExpense>[],
+                                ),
+                          builder: (context, expSnap) {
+                            final taskErr = taskSnap.hasError && taskRepository.isAvailable;
+                            final meetErr =
+                                meetSnap.hasError && meetingsRepository.isAvailable;
+                            final linkErr =
+                                linkSnap.hasError && linkedCalendarEventsRepository.isAvailable;
+                            if (taskErr || meetErr || linkErr) {
+                              return Text(
+                                "Schedule could not be loaded.",
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Theme.of(context).colorScheme.error,
+                                ),
+                              );
+                            }
+                            final meds = (medSnap.hasError && medicationsRepository.isAvailable)
+                                ? const <CareGroupMedication>[]
+                                : (medSnap.data ?? const []);
+                            final exps = (expSnap.hasError && expensesRepository.isAvailable)
+                                ? const <CareGroupExpense>[]
+                                : (expSnap.data ?? const []);
+                            final items = _mergeUpcomingScheduleItems(
+                              tasks: taskSnap.data ?? const [],
+                              meetings: meetSnap.data ?? const [],
+                              linkedGcalEvents: linkSnap.data ?? const [],
+                              medications: meds,
+                              expenses: exps,
+                            );
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _SectionHeader(
+                                  title: "Coming up",
+                                  onSeeAll: () => context.push("/calendar"),
+                                  seeAllLabel: "Calendar →",
+                                ),
+                                const SizedBox(height: 8),
+                                if (items.isEmpty)
+                                  Text(
+                                    "Nothing scheduled — add tasks, meds, expenses, or connect your calendar.",
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color:
+                                          CareGroupHomeStyleScope.of(context).textMuted,
+                                    ),
+                                  )
+                                else
+                                  SizedBox(
+                                    height: 118,
+                                    child: ListView.separated(
+                                      scrollDirection: Axis.horizontal,
+                                      clipBehavior: Clip.none,
+                                      itemCount: items.length,
+                                      separatorBuilder: (_, __) =>
+                                          const SizedBox(width: 8),
+                                      itemBuilder: (context, index) {
+                                        final it = items[index];
+                                        return _UpcomingCompactCard(
+                                          item: it,
+                                          nameByUid: byUid,
+                                          onTap: () {
+                                            if (it.kind == _UpcomingKind.task &&
+                                                it.task != null) {
+                                              final u = Uri(
+                                                path: "/tasks",
+                                                queryParameters: {
+                                                  "taskId": it.task!.id,
+                                                },
+                                              );
+                                              context.push(u.toString());
+                                            } else if (it.kind ==
+                                                    _UpcomingKind.meeting &&
+                                                it.meeting != null) {
+                                              context.push("/meetings");
+                                            } else if (it.kind ==
+                                                    _UpcomingKind.linkedGcal &&
+                                                it.linked != null) {
+                                              unawaited(
+                                                _openLinkedCalendarFromHome(
+                                                  context,
+                                                  it.linked!,
+                                                ),
+                                              );
+                                            } else if (it.kind ==
+                                                    _UpcomingKind.medication &&
+                                                it.medication != null) {
+                                              context.push("/medications");
+                                            } else if (it.kind ==
+                                                    _UpcomingKind.expense &&
+                                                it.expense != null) {
+                                              context.push("/expenses");
+                                            }
+                                          },
+                                        );
+                                      },
+                                    ),
+                                  ),
+                              ],
+                            );
+                          },
+                        );
+                      },
+                    );
+                  },
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _UpcomingCompactCard extends StatelessWidget {
+  const _UpcomingCompactCard({
+    required this.item,
+    required this.nameByUid,
+    required this.onTap,
+  });
+
+  final _UpcomingScheduleItem item;
+  final Map<String, String> nameByUid;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = CareGroupHomeStyleScope.of(context);
+    final kind = item.kind;
+
+    late final IconData icon;
+    late final String kindLabel;
+    late final Color accent;
+    late final String title;
+    late final String subtitle;
+    String? avatarUid;
+
+    switch (kind) {
+      case _UpcomingKind.task:
+        final t = item.task!;
+        icon = Icons.task_alt_outlined;
+        kindLabel = "Task";
+        accent = _urgencyBarColor(t, onTrackColor: s.outlineAccent);
+        title = t.title.isEmpty ? "Task" : t.title;
+        subtitle = _formatTaskDueLine(t.dueAt);
+        avatarUid = t.assignedTo;
+        break;
+      case _UpcomingKind.meeting:
+        final m = item.meeting!;
+        icon = Icons.groups_2_outlined;
+        kindLabel = "Meeting";
+        accent = const Color(0xFF1A7F7A);
+        title = m.title.isEmpty ? "Meeting" : m.title;
+        subtitle = _formatTaskDueLine(m.meetingAt);
+        avatarUid =
+            m.createdBy.isNotEmpty ? m.createdBy : null;
+        break;
+      case _UpcomingKind.linkedGcal:
+        final e = item.linked!;
+        icon = Icons.calendar_month_outlined;
+        kindLabel = "Calendar";
+        accent = const Color(0xFF8E24AA);
+        title = e.title.isEmpty ? "Event" : e.title;
+        subtitle = _formatTaskDueLine(e.startAt);
+        break;
+      case _UpcomingKind.medication:
+        final med = item.medication!;
+        icon = Icons.medication_outlined;
+        kindLabel = "Medicine";
+        accent = const Color(0xFF0277BD);
+        title = med.name.isEmpty ? "Medication" : med.name;
+        subtitle = _formatTaskDueLine(item.sortAt);
+        break;
+      case _UpcomingKind.expense:
+        final ex = item.expense!;
+        icon = Icons.payments_outlined;
+        kindLabel = "Expense";
+        accent = const Color(0xFFC2185B);
+        title = ex.title.isEmpty ? "Expense" : ex.title;
+        final cur = ex.currency;
+        subtitle =
+            "$cur ${ex.amount.toStringAsFixed(ex.amount == ex.amount.roundToDouble() ? 0 : 2)} · ${_formatTaskDueLine(ex.spentAt)}";
+        avatarUid = ex.createdBy.isNotEmpty ? ex.createdBy : null;
+        break;
+    }
+
+    final avatarKey =
+        avatarUid != null && avatarUid.isNotEmpty ? avatarUid : null;
+    final assigneeName = avatarKey != null
+        ? _nameForUid(avatarKey, nameByUid)
+        : null;
+
+    return SizedBox(
+      width: 156,
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: s.cardBorder),
+              boxShadow: [
+                BoxShadow(
+                  color: s.cardShadow,
+                  blurRadius: 3,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 3,
+                      height: 36,
+                      margin: const EdgeInsets.only(right: 8),
+                      decoration: BoxDecoration(
+                        color: accent,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(icon, size: 13, color: s.textMuted),
+                              const SizedBox(width: 4),
+                              Expanded(
+                                child: Text(
+                                  kindLabel,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w700,
+                                    letterSpacing: 0.2,
+                                    color: s.textMuted,
+                                  ),
+                                ),
+                              ),
+                              if (avatarKey != null)
+                                Container(
+                                  width: 22,
+                                  height: 22,
+                                  alignment: Alignment.center,
+                                  decoration: BoxDecoration(
+                                    color: _avatarColor(avatarKey),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Text(
+                                    _initialsForName(
+                                      (assigneeName != null && assigneeName.isNotEmpty)
+                                          ? assigneeName
+                                          : "?",
+                                    ),
+                                    style: TextStyle(
+                                      fontSize: 8,
+                                      fontWeight: FontWeight.w700,
+                                      color: _onAvatar(
+                                        _avatarColor(avatarKey),
+                                        fallback: s.textPrimary,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              height: 1.2,
+                              color: s.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            subtitle,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 9,
+                              height: 1.15,
+                              color: s.textMuted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -22,7 +22,7 @@ bool _canManageWhatsappLink(List<CareGroupMember>? members, String? myUid) {
   }
   for (final m in members) {
     if (m.userId == myUid) {
-      return m.roles.contains("principal_carer") || m.roles.contains("carer");
+      return m.hasCarerOrOrganiserChatAccess;
     }
   }
   return false;

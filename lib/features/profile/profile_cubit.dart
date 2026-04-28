@@ -158,6 +158,7 @@ final class ProfileCubit extends Cubit<ProfileState> {
             wizardCompleted: true,
             wizardSkipped: true,
           ),
+          needsInvitationProfileCompletion: false,
         ),
       );
       return;
@@ -176,8 +177,21 @@ final class ProfileCubit extends Cubit<ProfileState> {
         displayName: user.displayName ?? _emailLocal(user.email),
         photoUrl: user.photoURL,
       );
-      profile = await _maybeRedeemInvitationFromEmailLink(user, profile);
-      await _emitWithCareGroupOptions(user, profile);
+      final deferredId = await PendingInvitationStore.read();
+      final deferInviteProfile = _invitationRepository.isAvailable &&
+          deferredId != null &&
+          deferredId.trim().isNotEmpty;
+
+      if (!deferInviteProfile) {
+        profile = await _maybeRedeemInvitationFromEmailLink(user, profile);
+        await _emitWithCareGroupOptions(user, profile);
+      } else {
+        await _emitWithCareGroupOptions(
+          user,
+          profile,
+          deferredInvitationId: deferredId,
+        );
+      }
     } on TimeoutException {
       emit(const ProfileError("Profile load timed out. Please retry."));
     } catch (e) {
@@ -217,7 +231,11 @@ final class ProfileCubit extends Cubit<ProfileState> {
     return profile;
   }
 
-  Future<void> _emitWithCareGroupOptions(User user, UserProfile profile) async {
+  Future<void> _emitWithCareGroupOptions(
+    User user,
+    UserProfile profile, {
+    String? deferredInvitationId,
+  }) async {
     var p = profile;
     List<CareGroupOption> options = const [];
     try {
@@ -277,11 +295,16 @@ final class ProfileCubit extends Cubit<ProfileState> {
             active.isEmpty ||
             !options.any((o) => o.careGroupId == active));
 
+    final pendingId = deferredInvitationId?.trim();
+    final defer = pendingId != null && pendingId.isNotEmpty;
+
     emit(
       ProfileReady(
         p,
         careGroupOptions: options,
         requiresCareGroupSelection: requires,
+        needsInvitationProfileCompletion: defer,
+        pendingInvitationId: defer ? pendingId : null,
       ),
     );
 
@@ -291,6 +314,64 @@ final class ProfileCubit extends Cubit<ProfileState> {
           .syncMemberRosterFromProfile(uid: user.uid, profile: p)
           .catchError((_) {}),
     );
+  }
+
+
+  Future<void> completeInvitationProfile({
+    required String displayName,
+    required int avatarIndex,
+  }) async {
+    final user = _authBloc.state.user;
+    if (user == null) {
+      return;
+    }
+
+    final trimmed = displayName.trim();
+    final id =
+        await PendingInvitationStore.read() ??
+            (state is ProfileReady
+                ? (state as ProfileReady).pendingInvitationId
+                : null);
+    if (id == null || id.isEmpty) {
+      await refresh();
+      return;
+    }
+
+    emit(const ProfileLoading());
+    try {
+      if (trimmed.isEmpty) {
+        await _load(user);
+        return;
+      }
+      if (avatarIndex < 1) {
+        await _load(user);
+        return;
+      }
+
+      await _userRepository.ensureUserDocument(user);
+      await _userRepository.updateProfileFields(user.uid, {
+        "displayName": trimmed,
+        "wizardSkipped": true,
+      });
+      await _userRepository.setAvatarPreset(user.uid, avatarIndex);
+
+      final careGroupId =
+          await _invitationRepository.redeemInvitationForSignedInUser(
+        invitationId: id,
+        displayName: trimmed,
+        avatarIndex: avatarIndex,
+      );
+      await PendingInvitationStore.clear();
+      if (careGroupId != null && careGroupId.isNotEmpty) {
+        await _userRepository.setActiveCareGroup(
+          uid: user.uid,
+          careGroupId: careGroupId,
+        );
+      }
+      await _load(user);
+    } catch (e) {
+      await _load(user);
+    }
   }
 
   String _emailLocal(String? email) {

@@ -2,8 +2,11 @@ import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
 import "package:table_calendar/table_calendar.dart";
+import "package:url_launcher/url_launcher.dart";
 
 import "../../../core/theme/app_colors.dart";
+import "../../calendar/models/linked_calendar_event.dart";
+import "../../calendar/repository/linked_calendar_events_repository.dart";
 import "../../meetings/cubit/meetings_cubit.dart";
 import "../../meetings/cubit/meetings_state.dart";
 import "../../meetings/models/care_group_meeting.dart";
@@ -30,6 +33,11 @@ final class _GridMeeting extends _CalGridItem {
 final class _GridTask extends _CalGridItem {
   const _GridTask(this.t);
   final CareGroupTask t;
+}
+
+final class _GridLinked extends _CalGridItem {
+  const _GridLinked(this.e);
+  final LinkedCalendarEvent e;
 }
 
 /// Active care group: meetings + tasks with due dates on the month grid.
@@ -109,10 +117,25 @@ class _CalendarBody extends StatelessWidget {
           builder: (context, mState) {
             return BlocBuilder<TasksCubit, TasksState>(
               builder: (context, tState) {
-                return _CalendarScaffold(
-                  mState: mState,
-                  tState: tState,
-                  careGroupId: careGroupId,
+                final linkedRepo = context.read<LinkedCalendarEventsRepository>();
+                if (!linkedRepo.isAvailable) {
+                  return _CalendarScaffold(
+                    mState: mState,
+                    tState: tState,
+                    linkedEvents: const [],
+                    careGroupId: careGroupId,
+                  );
+                }
+                return StreamBuilder<List<LinkedCalendarEvent>>(
+                  stream: linkedRepo.watchLinkedEvents(careGroupId),
+                  builder: (context, linkSnap) {
+                    return _CalendarScaffold(
+                      mState: mState,
+                      tState: tState,
+                      linkedEvents: linkSnap.data ?? const [],
+                      careGroupId: careGroupId,
+                    );
+                  },
                 );
               },
             );
@@ -127,11 +150,13 @@ class _CalendarScaffold extends StatelessWidget {
   const _CalendarScaffold({
     required this.mState,
     required this.tState,
+    required this.linkedEvents,
     required this.careGroupId,
   });
 
   final MeetingsState mState;
   final TasksState tState;
+  final List<LinkedCalendarEvent> linkedEvents;
   final String careGroupId;
 
   bool get _canAddMeeting =>
@@ -169,6 +194,7 @@ class _CalendarScaffold extends StatelessWidget {
         child: _CalendarContent(
           mState: mState,
           tState: tState,
+          linkedEvents: linkedEvents,
           careGroupId: careGroupId,
         ),
       ),
@@ -236,6 +262,30 @@ class _CalendarScaffold extends StatelessWidget {
   }
 }
 
+Future<void> _openLinkedCalendarEvent(
+  BuildContext context,
+  LinkedCalendarEvent e,
+) async {
+  final href = e.htmlLink?.trim();
+  if (href != null && href.isNotEmpty) {
+    final u = Uri.tryParse(href);
+    if (u != null && await canLaunchUrl(u)) {
+      await launchUrl(u, mode: LaunchMode.externalApplication);
+      return;
+    }
+  }
+  if (!context.mounted) {
+    return;
+  }
+  ScaffoldMessenger.of(context).showSnackBar(
+    const SnackBar(
+      content: Text(
+        "Synced events open in Google Calendar once the mirror has run.",
+      ),
+    ),
+  );
+}
+
 String _formatTaskDue(DateTime d) {
   return "${d.year}-${d.month.toString().padLeft(2, "0")}-${d.day.toString().padLeft(2, "0")} "
       "${d.hour.toString().padLeft(2, "0")}:${d.minute.toString().padLeft(2, "0")}";
@@ -245,11 +295,13 @@ class _CalendarContent extends StatefulWidget {
   const _CalendarContent({
     required this.mState,
     required this.tState,
+    required this.linkedEvents,
     required this.careGroupId,
   });
 
   final MeetingsState mState;
   final TasksState tState;
+  final List<LinkedCalendarEvent> linkedEvents;
   final String careGroupId;
 
   @override
@@ -314,9 +366,17 @@ class _CalendarContentState extends State<_CalendarContent> {
       ..sort((a, b) => a.dueAt!.compareTo(b.dueAt!));
   }
 
+  List<LinkedCalendarEvent> _linkedOnDay(List<LinkedCalendarEvent> all, DateTime day) {
+    return all
+        .where((e) => isSameDay(e.startAt, day))
+        .toList()
+      ..sort((a, b) => a.startAt.compareTo(b.startAt));
+  }
+
   List<_CalGridItem> _eventsForDay(
     List<CareGroupMeeting> meetings,
     List<CareGroupTask> tasks,
+    List<LinkedCalendarEvent> linked,
     DateTime d,
   ) {
     final m = meetings
@@ -325,7 +385,10 @@ class _CalendarContentState extends State<_CalendarContent> {
     final t = tasks
         .where((x) => x.dueAt != null && isSameDay(x.dueAt!, d))
         .map<_CalGridItem>((x) => _GridTask(x));
-    return [...m, ...t].toList();
+    final k = linked
+        .where((x) => isSameDay(x.startAt, d))
+        .map<_CalGridItem>((x) => _GridLinked(x));
+    return [...m, ...t, ...k].toList();
   }
 
   @override
@@ -340,12 +403,14 @@ class _CalendarContentState extends State<_CalendarContent> {
 
     final allMeetings = _meetings();
     final allTasks = _tasks();
+    final allLinked = widget.linkedEvents;
     final unscheduledM = _unscheduledMeetings(allMeetings);
     final undatedT = _undatedTasks(allTasks);
     final day = _selectedDay ?? _focusedDay;
     final forM = _meetingsOnDay(allMeetings, day);
     final forT = _tasksOnDay(allTasks, day);
-    final dayEmpty = forM.isEmpty && forT.isEmpty;
+    final forL = _linkedOnDay(allLinked, day);
+    final dayEmpty = forM.isEmpty && forT.isEmpty && forL.isEmpty;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -372,7 +437,7 @@ class _CalendarContentState extends State<_CalendarContent> {
         ),
         const SizedBox(height: 4),
         Text(
-          "Teal dot: meeting · green dot: task due. Tap a day for the list; open an item to edit.",
+          "Teal dot: meeting · green dot: task due · purple dot: linked Google Calendar. Tap a day for the list.",
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: AppColors.grey500,
               ),
@@ -385,7 +450,7 @@ class _CalendarContentState extends State<_CalendarContent> {
           selectedDayPredicate: (d) =>
               _selectedDay != null && isSameDay(_selectedDay!, d),
           calendarFormat: _calendarFormat,
-          eventLoader: (d) => _eventsForDay(allMeetings, allTasks, d),
+          eventLoader: (d) => _eventsForDay(allMeetings, allTasks, allLinked, d),
           startingDayOfWeek: StartingDayOfWeek.monday,
           calendarStyle: const CalendarStyle(
             outsideDaysVisible: false,
@@ -419,14 +484,17 @@ class _CalendarContentState extends State<_CalendarContent> {
               }
               var nMeet = 0;
               var nTask = 0;
+              var nLinked = 0;
               for (final e in ev) {
                 if (e is _GridMeeting) {
                   nMeet++;
                 } else if (e is _GridTask) {
                   nTask++;
+                } else if (e is _GridLinked) {
+                  nLinked++;
                 }
               }
-              if (nMeet == 0 && nTask == 0) {
+              if (nMeet == 0 && nTask == 0 && nLinked == 0) {
                 return const SizedBox.shrink();
               }
               return Row(
@@ -453,6 +521,18 @@ class _CalendarContentState extends State<_CalendarContent> {
                         margin: const EdgeInsets.symmetric(horizontal: 1),
                         decoration: const BoxDecoration(
                           color: AppColors.green,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                  ],
+                  if (nLinked > 0) ...[
+                    for (var i = 0; i < nLinked.clamp(0, 2); i++)
+                      Container(
+                        width: 5,
+                        height: 5,
+                        margin: const EdgeInsets.symmetric(horizontal: 1),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFF8E24AA),
                           shape: BoxShape.circle,
                         ),
                       ),
@@ -573,6 +653,30 @@ class _CalendarContentState extends State<_CalendarContent> {
               ),
             ),
           ],
+          if (forL.isNotEmpty) ...[
+            Text(
+              "Google Calendar",
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: AppColors.grey500,
+                  ),
+            ),
+            const SizedBox(height: 4),
+            ...forL.map(
+              (e) => Card(
+                margin: const EdgeInsets.only(bottom: 6),
+                child: ListTile(
+                  leading: const Icon(
+                    Icons.calendar_month_outlined,
+                    color: Color(0xFF8E24AA),
+                  ),
+                  title: Text(e.title),
+                  subtitle: Text(_formatTaskDue(e.startAt)),
+                  trailing: const Icon(Icons.open_in_new, size: 18),
+                  onTap: () => _openLinkedCalendarEvent(context, e),
+                ),
+              ),
+            ),
+          ],
         ],
         if (unscheduledM.isNotEmpty) ...[
           const SizedBox(height: 20),
@@ -640,7 +744,7 @@ class _CalendarContentState extends State<_CalendarContent> {
             ),
           ),
         ],
-        if (allMeetings.isEmpty && allTasks.isEmpty)
+        if (allMeetings.isEmpty && allTasks.isEmpty && allLinked.isEmpty)
           Padding(
             padding: const EdgeInsets.only(top: 8),
             child: Text(

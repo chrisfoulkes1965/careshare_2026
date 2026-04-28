@@ -39,11 +39,12 @@ final class InvitationsCubit extends Cubit<InvitationsState> {
     );
   }
 
-  Future<void> invite(String email) {
+  Future<void> invite(String email, List<String> invitedRoles) {
     return _repository.createInvitation(
       careGroupId: careGroupId,
       dataCareGroupId: dataCareGroupId,
       email: email,
+      invitedRoles: invitedRoles,
     );
   }
 

@@ -107,7 +107,7 @@ class _CareGroupCalendarSetupSectionState
 
   @override
   Widget build(BuildContext context) {
-    final principal = widget.option.isPrincipalCarer;
+    final canManage = widget.option.canManageCareGroupOrganisation;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -133,22 +133,22 @@ class _CareGroupCalendarSetupSectionState
         else ...[
           TextField(
             controller: _calendarId,
-            readOnly: !principal,
+            readOnly: !canManage,
             decoration: InputDecoration(
               border: const OutlineInputBorder(),
               labelText: "Calendar ID",
               hintText:
                   "often …@group.calendar.google.com from Google Calendar settings",
-              helperText: principal
+              helperText: canManage
                   ? "Stored on this care group for sync and opening in Google Calendar."
-                  : "Only a principal carer can change these.",
+                  : "Only organisers (principal carer or care group administrator) can change these.",
               enabled: !_saving,
             ),
           ),
           const SizedBox(height: 10),
           TextField(
             controller: _icalUrl,
-            readOnly: !principal,
+            readOnly: !canManage,
             decoration: InputDecoration(
               border: const OutlineInputBorder(),
               labelText: "Calendar subscription URL (optional)",
@@ -162,7 +162,7 @@ class _CareGroupCalendarSetupSectionState
           const SizedBox(height: 10),
           TextField(
             controller: _timezone,
-            readOnly: !principal,
+            readOnly: !canManage,
             decoration: InputDecoration(
               border: const OutlineInputBorder(),
               labelText: "Time zone for due times (optional)",
@@ -171,7 +171,7 @@ class _CareGroupCalendarSetupSectionState
               enabled: !_saving,
             ),
           ),
-          if (principal) ...[
+          if (canManage) ...[
             const SizedBox(height: 12),
             FilledButton(
               onPressed: (_loading || _saving) ? null : _save,
@@ -184,4 +184,8 @@ class _CareGroupCalendarSetupSectionState
                   : const Text("Save calendar settings"),
             ),
           ],
-     
+        ],
+      ],
+    );
+  }
+}

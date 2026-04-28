@@ -152,6 +152,20 @@ service cloud.firestore {
         && invitation.invitedEmail == request.auth.token.email;
     }
 
+    function invitationRolesValid(roles) {
+      return roles is list
+        && roles.size() >= 1
+        && roles.size() <= 6
+        && roles.hasOnly([
+          'principal_carer',
+          'care_group_administrator',
+          'carer',
+          'financial_manager',
+          'power_of_attorney',
+          'receives_care',
+        ]);
+    }
+
     // --- Top-level collections ---------------------------------------------
 
     match /users/{userId} {
@@ -185,13 +199,25 @@ service cloud.firestore {
     }
 
     match /invitations/{invitationId} {
-      allow read: if signedIn() && (
-        emailMatchesInvite(resource.data)
-        || (
-          resource.data.keys().hasAll(['careGroupId'])
-          && isCareGroupMember(resource.data.careGroupId)
+      // Single-document load for invitation links before sign-in (pending only, no auth).
+      allow get: if (
+        !signedIn()
+        && resource.data.keys().hasAll(['careGroupId', 'status', 'invitedEmail'])
+        && resource.data.status == 'pending'
+      ) || (
+        signedIn()
+        && (
+          emailMatchesInvite(resource.data)
+          || (
+            resource.data.keys().hasAll(['careGroupId'])
+            && isCareGroupMember(resource.data.careGroupId)
+          )
         )
       );
+
+      allow list: if signedIn()
+        && resource.data.keys().hasAll(['careGroupId'])
+        && isCareGroupMember(resource.data.careGroupId);
 
       allow create: if signedIn()
         && request.resource.data.keys().hasAll([
@@ -199,9 +225,11 @@ service cloud.firestore {
           'dataCareGroupId',
           'invitedEmail',
           'invitedBy',
+          'invitedRoles',
           'status',
           'createdAt',
         ])
+        && invitationRolesValid(request.resource.data.invitedRoles)
         && hasAnyRole(careTeamId(request.resource.data.careGroupId), request.auth.uid, ['principal_carer', 'care_group_administrator'])
         && request.resource.data.invitedBy == request.auth.uid
         && request.resource.data.status == 'pending';
@@ -442,6 +470,13 @@ service cloud.firestore {
 
         allow delete: if isCareGroupMember(careGroupId)
           && isFinancialOrPrincipalForCareGroup(careGroupId);
+      }
+
+      match /linkedCalendarEvents/{linkedEventId} {
+        allow read: if isCareGroupMember(careGroupId)
+          && !isReceivesCareOnlyMember(careGroupId);
+
+        allow create, update, delete: if false;
       }
 
       match /meetings/{meetingId} {
