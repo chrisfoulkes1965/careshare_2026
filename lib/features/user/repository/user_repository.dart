@@ -122,8 +122,9 @@ class UserRepository {
     if (t.isEmpty) {
       throw ArgumentError("Enter a name.");
     }
-    final ref =
-        FirebaseFirestore.instance.collection("careGroups").doc(dataCareGroupDocId);
+    final ref = FirebaseFirestore.instance
+        .collection("careGroups")
+        .doc(dataCareGroupDocId);
     await FirebaseFirestore.instance.runTransaction((tx) async {
       final snap = await tx.get(ref);
       if (!snap.exists) {
@@ -137,8 +138,8 @@ class UserRepository {
       ];
       final profiles = <Map<String, dynamic>>[
         ...?((rawProfiles as List?)?.map(
-              (e) => Map<String, dynamic>.from(e as Map),
-            )),
+          (e) => Map<String, dynamic>.from(e as Map),
+        )),
       ];
       final id = "rcp_${DateTime.now().microsecondsSinceEpoch}";
       ids.add(id);
@@ -163,8 +164,9 @@ class UserRepository {
     if (recipientId.isEmpty) {
       throw ArgumentError("Missing recipient id.");
     }
-    final ref =
-        FirebaseFirestore.instance.collection("careGroups").doc(dataCareGroupDocId);
+    final ref = FirebaseFirestore.instance
+        .collection("careGroups")
+        .doc(dataCareGroupDocId);
     await FirebaseFirestore.instance.runTransaction((tx) async {
       final snap = await tx.get(ref);
       if (!snap.exists) {
@@ -178,8 +180,8 @@ class UserRepository {
       ];
       final profiles = <Map<String, dynamic>>[
         ...?((rawProfiles as List?)?.map(
-              (e) => Map<String, dynamic>.from(e as Map),
-            )),
+          (e) => Map<String, dynamic>.from(e as Map),
+        )),
       ];
       final nextIds = ids.where((e) => e != recipientId).toList();
       final nextProfiles = profiles
@@ -187,7 +189,8 @@ class UserRepository {
             (p) => p["id"]?.toString() != recipientId,
           )
           .toList();
-      if (nextProfiles.length == profiles.length && nextIds.length == ids.length) {
+      if (nextProfiles.length == profiles.length &&
+          nextIds.length == ids.length) {
         throw StateError(
           "That person was not found on this home document. Pull to refresh or check your care group link.",
         );
@@ -261,6 +264,36 @@ class UserRepository {
         .update({"name": t});
   }
 
+  /// Merges [groupCalendar] sub-fields on **`careGroups/{careGroupDocId}`** — the doc that owns
+  /// **`/tasks`**. Omit or pass empty strings to clear a field. Principal-only per rules.
+  Future<void> mergeCareGroupCalendar({
+    required String careGroupDocId,
+    String? calendarId,
+    String? icalUrl,
+    String? timezone,
+  }) async {
+    if (!_firebaseReady) {
+      return;
+    }
+    final ref =
+        FirebaseFirestore.instance.collection("careGroups").doc(careGroupDocId);
+    final patch = <String, dynamic>{};
+    void mergeField(String dotted, String? raw) {
+      final t = raw?.trim();
+      if (t == null || t.isEmpty) {
+        patch[dotted] = FieldValue.delete();
+      } else {
+        patch[dotted] = t;
+      }
+    }
+
+    mergeField("groupCalendar.calendarId", calendarId);
+    mergeField("groupCalendar.icalUrl", icalUrl);
+    mergeField("groupCalendar.timezone", timezone);
+
+    await ref.update(patch);
+  }
+
   /// Sets `careGroups/{careGroupId}.themeColor` (ARGB int). Only allowed for principal
   /// carers per Firestore rules; may throw on permission denied.
   Future<void> setCareGroupThemeColor({
@@ -309,9 +342,8 @@ class UserRepository {
         ? rawRoles.map((e) => e.toString()).toList()
         : <String>[];
     final linked = (data["careGroupId"] as String?)?.trim();
-    final resolvedDataGroupId = (linked != null && linked.isNotEmpty)
-        ? linked
-        : careGroupId;
+    final resolvedDataGroupId =
+        (linked != null && linked.isNotEmpty) ? linked : careGroupId;
     var displayName = (data["name"] as String?)?.trim() ?? "";
     if (displayName.isEmpty) {
       String? hName;

@@ -67,18 +67,19 @@ service cloud.firestore {
           );
     }
 
-    function isPrincipalCarerForCareGroup(careGroupId) {
-      return hasRole(careTeamId(careGroupId), request.auth.uid, 'principal_carer');
+    function isPrincipalCarerOrCareGroupAdminForCareGroup(careGroupId) {
+      let team = careTeamId(careGroupId);
+      return hasAnyRole(team, request.auth.uid, ['principal_carer', 'care_group_administrator']);
     }
 
     function isCarerOrPrincipalForCareGroup(careGroupId) {
       let team = careTeamId(careGroupId);
-      return hasAnyRole(team, request.auth.uid, ['principal_carer', 'carer']);
+      return hasAnyRole(team, request.auth.uid, ['principal_carer', 'carer', 'care_group_administrator']);
     }
 
     function isFinancialOrPrincipalForCareGroup(careGroupId) {
       let team = careTeamId(careGroupId);
-      return hasAnyRole(team, request.auth.uid, ['principal_carer', 'financial_manager']);
+      return hasAnyRole(team, request.auth.uid, ['principal_carer', 'financial_manager', 'care_group_administrator']);
     }
 
     function isExpenseReaderForCareGroup(careGroupId) {
@@ -88,12 +89,13 @@ service cloud.firestore {
         'principal_carer',
         'financial_manager',
         'power_of_attorney',
+        'care_group_administrator',
       ]);
     }
 
     function isPrincipalOrPoaForCareGroup(careGroupId) {
       let team = careTeamId(careGroupId);
-      return hasAnyRole(team, request.auth.uid, ['principal_carer', 'power_of_attorney']);
+      return hasAnyRole(team, request.auth.uid, ['principal_carer', 'power_of_attorney', 'care_group_administrator']);
     }
 
     function isReceivesCareOnlyMember(careGroupId) {
@@ -105,6 +107,7 @@ service cloud.firestore {
           'carer',
           'financial_manager',
           'power_of_attorney',
+          'care_group_administrator',
         ]);
     }
 
@@ -131,6 +134,7 @@ service cloud.firestore {
         'principal_carer',
         'carer',
         'power_of_attorney',
+        'care_group_administrator',
       ]);
     }
 
@@ -198,7 +202,7 @@ service cloud.firestore {
           'status',
           'createdAt',
         ])
-        && hasRole(careTeamId(request.resource.data.careGroupId), request.auth.uid, 'principal_carer')
+        && hasAnyRole(careTeamId(request.resource.data.careGroupId), request.auth.uid, ['principal_carer', 'care_group_administrator'])
         && request.resource.data.invitedBy == request.auth.uid
         && request.resource.data.status == 'pending';
 
@@ -210,13 +214,13 @@ service cloud.firestore {
         )
         || (
           resource.data.keys().hasAny(['careGroupId'])
-          && hasRole(careTeamId(resource.data.careGroupId), request.auth.uid, 'principal_carer')
+          && hasAnyRole(careTeamId(resource.data.careGroupId), request.auth.uid, ['principal_carer', 'care_group_administrator'])
         )
       );
 
       allow delete: if signedIn()
         && resource.data.keys().hasAny(['careGroupId'])
-        && hasRole(careTeamId(resource.data.careGroupId), request.auth.uid, 'principal_carer');
+        && hasAnyRole(careTeamId(resource.data.careGroupId), request.auth.uid, ['principal_carer', 'care_group_administrator']);
     }
 
     match /carePathways/{pathwayId} {
@@ -247,7 +251,7 @@ service cloud.firestore {
           isSelf(userId)
           && request.resource.data.keys().hasAll(['roles', 'displayName', 'joinedAt', 'kudosScore'])
         )
-        || hasRole(careTeamId(careGroupId), request.auth.uid, 'principal_carer')
+        || hasAnyRole(careTeamId(careGroupId), request.auth.uid, ['principal_carer', 'care_group_administrator'])
       );
 
       allow update: if signedIn()
@@ -259,13 +263,13 @@ service cloud.firestore {
             && diffKeys().hasOnly(['messagingToken', 'simpleMode', 'displayName', 'photoUrl', 'avatarIndex'])
           )
           || (
-            hasRole(careTeamId(careGroupId), request.auth.uid, 'principal_carer')
+            hasAnyRole(careTeamId(careGroupId), request.auth.uid, ['principal_carer', 'care_group_administrator'])
             && !diffKeys().hasAny(['joinedAt'])
           )
         );
 
       allow delete: if signedIn()
-        && hasRole(careTeamId(careGroupId), request.auth.uid, 'principal_carer')
+        && hasAnyRole(careTeamId(careGroupId), request.auth.uid, ['principal_carer', 'care_group_administrator'])
         && !isSelf(userId);
     }
 
@@ -306,7 +310,7 @@ service cloud.firestore {
 
       // Legacy docs: cross-link field [careGroupId] is immutable. Merged (single) docs have no that field.
       allow update: if signedIn()
-        && isPrincipalCarerForCareGroup(careGroupId)
+        && isPrincipalCarerOrCareGroupAdminForCareGroup(careGroupId)
         && (
           (!resource.data.keys().hasAny(['careGroupId']) && !request.resource.data.keys().hasAny(['careGroupId']))
           || (
@@ -334,7 +338,7 @@ service cloud.firestore {
           && isCarerOrPrincipalForCareGroup(careGroupId)
           && request.resource.data.createdBy == resource.data.createdBy;
 
-        allow delete: if isPrincipalCarerForCareGroup(careGroupId);
+        allow delete: if isPrincipalCarerOrCareGroupAdminForCareGroup(careGroupId);
       }
 
       match /notes/{noteId} {
@@ -369,7 +373,7 @@ service cloud.firestore {
         allow update: if isCareGroupMember(careGroupId)
           && isCarerOrPrincipalForCareGroup(careGroupId);
 
-        allow delete: if isPrincipalCarerForCareGroup(careGroupId);
+        allow delete: if isPrincipalCarerOrCareGroupAdminForCareGroup(careGroupId);
       }
 
       match /medications/{medicationId} {
@@ -446,7 +450,7 @@ service cloud.firestore {
         allow create, update: if isCareGroupMember(careGroupId)
           && isCarerOrPrincipalForCareGroup(careGroupId);
 
-        allow delete: if isPrincipalCarerForCareGroup(careGroupId);
+        allow delete: if isPrincipalCarerOrCareGroupAdminForCareGroup(careGroupId);
       }
 
       match /documents/{documentId} {
@@ -577,7 +581,7 @@ service cloud.firestore {
             )
           );
 
-        allow delete: if isPrincipalCarerForCareGroup(careGroupId);
+        allow delete: if isPrincipalCarerOrCareGroupAdminForCareGroup(careGroupId);
 
         match /messages/{messageId} {
           allow read: if isCareGroupMember(careGroupId)
@@ -609,6 +613,11 @@ service cloud.firestore {
         allow read: if isCareGroupMember(careGroupId) && isPrincipalOrPoaForCareGroup(careGroupId);
         allow write: if false;
       }
+    }
+
+    match /config/{documentId} {
+      allow read: if signedIn();
+      allow write: if false;
     }
 
     match /{document=**} {

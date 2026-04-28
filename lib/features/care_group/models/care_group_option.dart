@@ -20,11 +20,25 @@ final class CareGroupOption extends Equatable {
   /// From `careGroups/{id}/members/{uid}.roles` when the user is listed in that group.
   final List<String> roles;
 
+  bool get isPrincipalCarer => roles.contains("principal_carer");
+
+  /// Delegated administrative access (organiser) — overlaps with principal for group ops in rules/UI.
+  bool get isCareGroupAdministrator =>
+      roles.contains("care_group_administrator");
+
+  /// Name, theme, calendar settings, invitations, and member-role management.
+  bool get canManageCareGroupOrganisation =>
+      isPrincipalCarer || isCareGroupAdministrator;
+
   /// Optional `careGroups/{id}.themeColor` (ARGB int) for the home theme (header + page).
   final int? themeColor;
 
-  bool get isPrincipalCarer => roles.contains("principal_carer");
-
   @override
-  List<Object?> get props => [careGroupId, dataCareGroupId, displayName, roles, themeColor];
+  List<Object?> get props => [
+        careGroupId,
+        dataCareGroupId,
+        displayName,
+        roles,
+        themeColor,
+      ];
 }

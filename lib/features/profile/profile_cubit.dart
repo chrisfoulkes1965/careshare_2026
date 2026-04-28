@@ -58,6 +58,36 @@ final class ProfileCubit extends Cubit<ProfileState> {
     }
   }
 
+  /// Writes `groupCalendar.{calendarId,icalUrl,timezone}` on `careGroups/{careGroupDocId}`.
+  Future<void> mergeCareGroupCalendar({
+    required String careGroupDocId,
+    String? calendarId,
+    String? icalUrl,
+    String? timezone,
+  }) async {
+    final user = _authBloc.state.user;
+    if (user == null) {
+      return;
+    }
+    final previous = state;
+    try {
+      await _userRepository.mergeCareGroupCalendar(
+        careGroupDocId: careGroupDocId,
+        calendarId: calendarId,
+        icalUrl: icalUrl,
+        timezone: timezone,
+      );
+      await _load(user);
+    } catch (e) {
+      if (previous is ProfileReady) {
+        emit(previous);
+      } else {
+        emit(ProfileError(e.toString()));
+      }
+      rethrow;
+    }
+  }
+
   /// Updates `careGroups/{careGroupId}.themeColor` (or clears it) and reloads profile.
   Future<void> setCareGroupThemeColor(String careGroupId, int? argb) async {
     final user = _authBloc.state.user;
@@ -208,9 +238,9 @@ final class ProfileCubit extends Cubit<ProfileState> {
         try {
           final repair = await _userRepository
               .fetchCareGroupOptionForActiveProfile(
-            uid: user.uid,
-            careGroupId: p.activeCareGroupId!,
-          )
+                uid: user.uid,
+                careGroupId: p.activeCareGroupId!,
+              )
               .timeout(const Duration(seconds: 12));
           if (repair != null) {
             options = [...options, repair]..sort(

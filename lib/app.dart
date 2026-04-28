@@ -23,6 +23,7 @@ import "features/notes/repository/notes_repository.dart";
 import "features/profile/profile_cubit.dart";
 import "features/profile/profile_state.dart";
 import "features/setup_wizard/repository/setup_repository.dart";
+import "features/settings/domain/group_calendar_service.dart";
 import "features/tasks/repository/task_repository.dart";
 import "features/user/repository/user_repository.dart";
 import "router/app_router.dart";
@@ -164,10 +165,13 @@ class CareShareRoot extends StatelessWidget {
       child: RepositoryProvider(
         create: (_) => UserRepository(firebaseReady: firebaseReady),
         child: RepositoryProvider(
-          create: (_) => SetupRepository(firebaseReady: firebaseReady),
+          create: (_) =>
+              GroupCalendarService(firebaseReady: firebaseReady),
           child: RepositoryProvider(
-            create: (_) => TaskRepository(firebaseReady: firebaseReady),
+            create: (_) => SetupRepository(firebaseReady: firebaseReady),
             child: RepositoryProvider(
+              create: (_) => TaskRepository(firebaseReady: firebaseReady),
+              child: RepositoryProvider(
               create: (_) => InvitationRepository(firebaseReady: firebaseReady),
               child: RepositoryProvider(
                 create: (_) => JournalRepository(firebaseReady: firebaseReady),
@@ -228,6 +232,7 @@ class CareShareRoot extends StatelessWidget {
             ),
           ),
         ),
+      ),
       ),
     );
   }

@@ -7,8 +7,10 @@ import "../../../core/theme/app_colors.dart";
 import "../../care_group/models/care_group_option.dart";
 import "../../profile/profile_cubit.dart";
 import "../../profile/profile_state.dart";
+import "widgets/care_group_calendar_setup_section.dart";
 import "widgets/care_group_members_invites_section.dart";
 import "widgets/care_group_theme_picker_sheet.dart";
+import "../../settings/presentation/widgets/calendar_subscription_tile.dart";
 
 /// Settings for the user’s [ProfileReady.profile.activeCareGroupId]: name, theme, setup wizard, members.
 void _careGroupSettingsPopOrHome(BuildContext context) {
@@ -144,6 +146,14 @@ class CareGroupSettingsScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
+              _SectionCard(
+                child: CareGroupCalendarSetupSection(option: opt),
+              ),
+              const SizedBox(height: 12),
+              const _SectionCard(
+                child: CalendarSubscriptionTile(),
+              ),
+              const SizedBox(height: 12),
               _ActiveIdsForSupportCard(
                 activeCareGroupId: state.profile.activeCareGroupId,
               ),
@@ -191,14 +201,14 @@ class _CareGroupSettingsFormState extends State<_CareGroupSettingsForm> {
   @override
   Widget build(BuildContext context) {
     final o = widget.option;
-    final principal = o.isPrincipalCarer;
+    final canManageOrganisation = o.canManageCareGroupOrganisation;
     return _SectionCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
             "You can name this care team, set the theme colour for home, and review people and invitations. "
-            "Only a principal carer can change the name and colour.",
+            "Principal carers or care group administrators can change the name and colour.",
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
@@ -211,13 +221,13 @@ class _CareGroupSettingsFormState extends State<_CareGroupSettingsForm> {
           const SizedBox(height: 8),
           TextField(
             controller: _name,
-            readOnly: !principal,
+            readOnly: !canManageOrganisation,
             textCapitalization: TextCapitalization.sentences,
             decoration: InputDecoration(
               border: const OutlineInputBorder(),
               hintText: "Name shown in the app",
-              enabled: principal,
-              suffixIcon: principal && _saving
+              enabled: canManageOrganisation,
+              suffixIcon: canManageOrganisation && _saving
                   ? const Padding(
                       padding: EdgeInsets.all(12),
                       child: SizedBox(
@@ -229,7 +239,7 @@ class _CareGroupSettingsFormState extends State<_CareGroupSettingsForm> {
                   : null,
             ),
           ),
-          if (principal) ...[
+          if (canManageOrganisation) ...[
             const SizedBox(height: 12),
             FilledButton(
               onPressed: _saving
@@ -271,7 +281,7 @@ class _CareGroupSettingsFormState extends State<_CareGroupSettingsForm> {
             const Padding(
               padding: EdgeInsets.only(top: 8),
               child: Text(
-                "Ask a principal carer to change the name or theme colour.",
+                "Ask someone with organiser access (principal carer or care group administrator) to change the name or theme colour.",
                 style: TextStyle(
                   fontSize: 12,
                   color: AppColors.grey500,
@@ -308,13 +318,13 @@ class _CareGroupSettingsFormState extends State<_CareGroupSettingsForm> {
             ),
             title: const Text("Theme colour…"),
             subtitle: const Text("Tap to choose a colour or reset to default"),
-            onTap: principal
+            onTap: canManageOrganisation
                 ? () => _onPickTheme(context, o)
                 : () {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content: Text(
-                            "Only a principal carer can change the theme colour."),
+                            "Only organisers (principal carer or care group administrator) can change the theme colour."),
                       ),
                     );
                   },

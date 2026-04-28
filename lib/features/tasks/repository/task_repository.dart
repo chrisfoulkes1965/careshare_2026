@@ -13,6 +13,31 @@ class TaskRepository {
 
   final bool _firebaseReady;
 
+  /// Scheduling fields mirrored for Google Calendar sync (dueCalendarDate yyyy-MM-dd, dueTime HH:mm).
+  static Map<String, dynamic> _dueSchedulingPatches(DateTime? dueAt) {
+    if (dueAt == null) {
+      return {
+        "dueAt": FieldValue.delete(),
+        "dueCalendarDate": FieldValue.delete(),
+        "dueTime": FieldValue.delete(),
+        "dueDate": FieldValue.delete(),
+        "durationMinutes": FieldValue.delete(),
+      };
+    }
+    final cal =
+        '${dueAt.year}-${dueAt.month.toString().padLeft(2, '0')}-${dueAt.day.toString().padLeft(2, '0')}';
+    final time =
+        '${dueAt.hour.toString().padLeft(2, '0')}:${dueAt.minute.toString().padLeft(2, '0')}';
+    final dateMidnightLocal = DateTime(dueAt.year, dueAt.month, dueAt.day);
+    return {
+      "dueAt": Timestamp.fromDate(dueAt),
+      "dueCalendarDate": cal,
+      "dueTime": time,
+      "dueDate": Timestamp.fromDate(dateMidnightLocal),
+      "durationMinutes": 60,
+    };
+  }
+
   static const int _maxAttachmentCount = 5;
   static const int _maxBytes = 10 * 1024 * 1024;
   static const Duration _uploadTimeout = Duration(minutes: 2);
@@ -143,9 +168,7 @@ class TaskRepository {
     if (notes.trim().isNotEmpty) {
       data["notes"] = notes.trim();
     }
-    if (dueAt != null) {
-      data["dueAt"] = Timestamp.fromDate(dueAt);
-    }
+    data.addAll(_dueSchedulingPatches(dueAt));
     if (assignedTo != null && assignedTo.isNotEmpty) {
       data["assignedTo"] = assignedTo;
     }
@@ -204,11 +227,7 @@ class TaskRepository {
     } else {
       patch["notes"] = notes.trim();
     }
-    if (dueAt != null) {
-      patch["dueAt"] = Timestamp.fromDate(dueAt);
-    } else {
-      patch["dueAt"] = FieldValue.delete();
-    }
+    patch.addAll(_dueSchedulingPatches(dueAt));
     if (assignedTo != null && assignedTo.isNotEmpty) {
       patch["assignedTo"] = assignedTo;
     } else {

@@ -356,3 +356,6 @@ exports.onCareInvitationResendEmail = onDocumentUpdated(
     }
   }
 );
+
+const {syncToGoogleCalendar} = require("./gcal/syncToGoogleCalendar");
+exports.syncToGoogleCalendar = syncToGoogleCalendar;

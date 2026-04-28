@@ -100,8 +100,9 @@ class _MembersView extends StatelessWidget {
                 if (ps is! ProfileReady) {
                   return const Center(child: Text("Loading profile…"));
                 }
-                final isPrincipal =
-                    ps.activeCareGroupOption?.isPrincipalCarer == true;
+                final canManageOrganisation =
+                    ps.activeCareGroupOption?.canManageCareGroupOrganisation ==
+                        true;
                 final dataId = ps.activeCareGroupDataId;
                 final inviteCgId = ps.profile.activeCareGroupId ?? dataId;
                 if (state is MembersEmpty) {
@@ -112,15 +113,15 @@ class _MembersView extends StatelessWidget {
                           child: Padding(
                             padding: const EdgeInsets.all(24),
                             child: Text(
-                              isPrincipal
+                              canManageOrganisation
                                   ? "No one is listed as a signed-in member yet. Add people below or check pending invitations in care group settings."
-                                  : "No members in this care group yet. A principal carer can invite people.",
+                                  : "No members in this care group yet. Someone with organiser access (principal carer or care group administrator) can invite people.",
                               textAlign: TextAlign.center,
                             ),
                           ),
                         ),
                       ),
-                      if (isPrincipal &&
+                      if (canManageOrganisation &&
                           dataId != null &&
                           dataId.isNotEmpty &&
                           inviteCgId != null &&
@@ -166,15 +167,15 @@ class _MembersView extends StatelessWidget {
                             }
                           }
                           final canEditRoles = me != null &&
-                              me.roles.contains("principal_carer");
+                              me.canAssignMemberRoles;
                           final careGroupId =
                               context.read<MembersCubit>().careGroupId;
-                          final canAdd = isPrincipal &&
+                          final canAdd = canManageOrganisation &&
                               dataId != null &&
                               dataId.isNotEmpty &&
                               inviteCgId != null &&
                               inviteCgId.isNotEmpty;
-                          final canUseDelete = isPrincipal &&
+                          final canUseDelete = canManageOrganisation &&
                               dataId != null &&
                               dataId.isNotEmpty;
                           return ListView(

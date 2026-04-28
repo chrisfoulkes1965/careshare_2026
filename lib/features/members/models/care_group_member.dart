@@ -66,6 +66,10 @@ final class CareGroupMember extends Equatable {
     );
   }
 
+  bool get canAssignMemberRoles =>
+      roles.contains("principal_carer") ||
+      roles.contains("care_group_administrator");
+
   /// Person listed under [careGroups] `recipientProfiles` (e.g. [accessMode] `managed`).
   static CareGroupMember fromRecipientProfileMap(Map<String, dynamic> m) {
     final id = (m["id"] as String?)?.trim() ?? "";
