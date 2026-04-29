@@ -60,6 +60,27 @@ class InvitationRepository {
     });
   }
 
+  /// True only when the doc exists and [`status`] is `"pending"`.
+  /// Used to drop a stale [PendingInvitationStore] id after redemption or deletion.
+  Future<bool> invitationIsAwaitingAcceptance(String invitationId) async {
+    if (!_firebaseReady) {
+      return false;
+    }
+    final t = invitationId.trim();
+    if (t.isEmpty) {
+      return false;
+    }
+    final snap = await FirebaseFirestore.instance
+        .collection("invitations")
+        .doc(t)
+        .get();
+    if (!snap.exists) {
+      return false;
+    }
+    final st = ((snap.data() ?? {})["status"] as String?)?.trim() ?? "";
+    return st == "pending";
+  }
+
   static List<String> _rolesFromFirestore(Map<String, dynamic> d) {
     final raw = d["invitedRoles"];
     if (raw is List) {

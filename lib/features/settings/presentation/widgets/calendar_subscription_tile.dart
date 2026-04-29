@@ -26,7 +26,10 @@ class CalendarSubscriptionTile extends StatelessWidget {
           enabled: enabled,
           onTap: enabled
               ? () async {
-                  final id = state.profile.activeCareGroupId;
+                  final dataId = state.activeCareGroupDataId;
+                  final id = dataId != null && dataId.isNotEmpty
+                      ? dataId
+                      : state.profile.activeCareGroupId;
                   if (id == null || id.isEmpty) {
                     if (!context.mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(

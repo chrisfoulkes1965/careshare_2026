@@ -13,7 +13,6 @@ const {
 const {createCalendarClient, listEventsBetween} = require("./calendarClient");
 
 const gcalServiceAccountKey = defineSecret("GCAL_SERVICE_ACCOUNT_KEY");
-const gcalCalendarId = defineSecret("GCAL_CALENDAR_ID");
 
 const db = getFirestore();
 
@@ -133,6 +132,68 @@ function parseEventStartEnd(ev) {
 }
 
 /**
+ * Emails Calendar API uses for rooms/resources — not inviting people here.
+ * @param {string} email
+ * @return {boolean}
+ */
+function isNonPersonCalendarEmail(email) {
+  const e = String(email || "").toLowerCase();
+  return (
+    e.endsWith("@resource.calendar.google.com") ||
+    e.endsWith("@group.calendar.google.com")
+  );
+}
+
+/**
+ * Organizer plus attendees from Google Calendar event metadata (deduped by email).
+ * @param {import("googleapis").calendar_v3.Schema$Event} ev
+ * @return {Array<{email: string, name: string | null, role: string}>}
+ */
+function peopleFromCalendarEvent(ev) {
+  /** @type {Array<{email: string, name: string | null, role: string}>} */
+  const out = [];
+
+  /** @param {string|null|undefined} rawEmail @param {string|null|undefined} name @param {string} role */
+  const push = (rawEmail, name, role) => {
+    const raw = rawEmail != null ? String(rawEmail).trim().toLowerCase() : "";
+    if (!raw || !raw.includes("@") || isNonPersonCalendarEmail(raw)) {
+      return;
+    }
+    const nm =
+      name != null && String(name).trim() ? String(name).trim() : null;
+    out.push({
+      email: raw,
+      name: nm,
+      role,
+    });
+  };
+
+  const org = ev.organizer;
+  if (org && org.email) {
+    push(org.email, org.displayName, "organizer");
+  }
+
+  const attendees = ev.attendees;
+  if (Array.isArray(attendees)) {
+    for (const a of attendees) {
+      if (!a || !a.email) continue;
+      push(a.email, a.displayName, "participant");
+    }
+  }
+
+  const seen = new Set();
+  const dedup = [];
+  for (const p of out) {
+    if (seen.has(p.email)) {
+      continue;
+    }
+    seen.add(p.email);
+    dedup.push(p);
+  }
+  return dedup.length > 120 ? dedup.slice(0, 120) : dedup;
+}
+
+/**
  * @param {string} careGroupId
  * @return {Promise<Set<string>>}
  */
@@ -202,6 +263,8 @@ async function syncCareGroup(careGroupId, calendar, calendarIdResolved) {
         ? String(ev.htmlLink).trim()
         : null;
 
+    const calendarPeople = peopleFromCalendarEvent(ev);
+
     incomingDocs.push({
       docId,
       data: {
@@ -211,6 +274,7 @@ async function syncCareGroup(careGroupId, calendar, calendarIdResolved) {
         endAt: se.endAt ? Timestamp.fromDate(se.endAt) : null,
         allDay: !!se.allDay,
         htmlLink,
+        calendarPeople,
         syncedAt: FieldValue.serverTimestamp(),
       },
     });
@@ -257,7 +321,6 @@ async function runSync() {
     );
     return;
   }
-  const fallbackCal = (gcalCalendarId.value() || "").trim();
 
   /** @type {FirebaseFirestore.QueryDocumentSnapshot | null} */
   let lastDoc = null;
@@ -274,9 +337,9 @@ async function runSync() {
       const teamOrMergedId = doc.id;
       const dataWriteId = dataCareGroupDocId(teamOrMergedId, doc.data());
       let cid = await resolveCalendarIdForCareGroupDoc(doc);
-      if (!cid && fallbackCal) {
-        cid = fallbackCal;
-      }
+      // Do NOT apply legacy GCAL_CALENDAR_ID fallback: that mirrors one calendar into every
+      // group's linkedCalendarEvents. Only sync when calendarId / groupCalendar is set on the
+      // careGroup graph (resolver above).
       if (!cid) {
         continue;
       }
@@ -319,7 +382,7 @@ exports.syncInboundGoogleCalendar = onSchedule(
   {
     schedule: "every 30 minutes",
     region: "us-central1",
-    secrets: [gcalServiceAccountKey, gcalCalendarId],
+    secrets: [gcalServiceAccountKey],
     timeoutSeconds: 540,
     memory: "512MiB",
   },

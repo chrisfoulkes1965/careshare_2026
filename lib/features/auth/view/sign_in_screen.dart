@@ -6,6 +6,7 @@ import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
 
 import "../../../core/constants/app_constants.dart";
+import "../../../core/invite/invite_link_query_params.dart";
 import "../../../core/invite/invitation_landing_preview.dart";
 import "../../../core/invite/pending_invitation_store.dart";
 import "../../../core/theme/app_assets.dart";
@@ -13,6 +14,7 @@ import "../../../core/theme/app_colors.dart";
 import "../bloc/auth_bloc.dart";
 import "../bloc/auth_event.dart";
 import "../bloc/auth_state.dart";
+import "../invite_link_account_gate.dart";
 import "../repository/auth_repository.dart";
 import "widgets/invitation_landing_panel.dart";
 
@@ -28,7 +30,8 @@ class _SignInScreenState extends State<SignInScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
-  var _routeParamsApplied = false;
+  String? _lastLoadedInvitePreviewId;
+  var _inviteMismatchSignOutDone = false;
 
   InvitationLandingPreview? _invitePreview;
   bool _inviteLoading = false;
@@ -46,21 +49,41 @@ class _SignInScreenState extends State<SignInScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_routeParamsApplied) {
-      return;
-    }
-    _routeParamsApplied = true;
-    final q = GoRouterState.of(context).uri.queryParameters;
-    final e = q["email"]?.trim();
-    if (e != null && e.isNotEmpty) {
-      _emailController.text = e;
+    final routerUri = GoRouterState.of(context).uri;
+    final q = mergeInviteLinkQueryParams(
+      path: routerUri.path,
+      routerUri: routerUri,
+    );
+    final emailParam = q["email"]?.trim();
+    if (emailParam != null &&
+        emailParam.isNotEmpty &&
+        _emailController.text.trim().isEmpty) {
+      _emailController.text = emailParam;
     }
     unawaited(PendingInvitationStore.saveFromQueryIfPresent(q["invite"]));
+
+    final effectiveMismatch = Uri(
+      path: normalizeAuthPath(routerUri.path),
+      queryParameters: q.isEmpty ? null : q,
+    );
+    if (!_inviteMismatchSignOutDone &&
+        inviteSignedLinkNeedsDifferentFirebaseUser(
+          authState: context.read<AuthBloc>().state,
+          uri: effectiveMismatch,
+        )) {
+      _inviteMismatchSignOutDone = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        context.read<AuthBloc>().add(const AuthSignOutRequested());
+      });
+    }
 
     final invite = q["invite"]?.trim();
     if (invite != null &&
         invite.isNotEmpty &&
+        invite != _lastLoadedInvitePreviewId &&
         context.read<AuthRepository>().isAuthAvailable) {
+      _lastLoadedInvitePreviewId = invite;
       unawaited(_loadInvitePreview(invite));
     }
   }
@@ -117,10 +140,13 @@ class _SignInScreenState extends State<SignInScreen> {
           builder: (context, state) {
             final firebaseReady =
                 context.read<AuthRepository>().isAuthAvailable;
-            final inviteParam =
-                GoRouterState.of(context).uri.queryParameters["invite"];
+            final routerUri = GoRouterState.of(context).uri;
+            final q = mergeInviteLinkQueryParams(
+              path: routerUri.path,
+              routerUri: routerUri,
+            );
             final hasInvite =
-                inviteParam != null && inviteParam.trim().isNotEmpty;
+                q["invite"] != null && q["invite"]!.trim().isNotEmpty;
 
             return LayoutBuilder(
               builder: (context, constraints) {
@@ -297,11 +323,7 @@ class _SignInScreenState extends State<SignInScreen> {
                                 OutlinedButton(
                                   onPressed: firebaseReady
                                       ? () {
-                                          final qp = GoRouterState.of(context)
-                                              .uri
-                                              .queryParameters;
-                                          final invite =
-                                              qp["invite"]?.trim();
+                                          final invite = q["invite"]?.trim();
                                           final e = _emailController.text
                                               .trim();
                                           if (invite != null &&

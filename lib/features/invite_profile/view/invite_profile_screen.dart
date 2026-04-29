@@ -1,5 +1,6 @@
 import "dart:async" show unawaited;
 
+import "package:firebase_core/firebase_core.dart" show FirebaseException;
 import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 
@@ -69,10 +70,22 @@ class _InviteProfileScreenState extends State<InviteProfileScreen> {
     if (!_formKey.currentState!.validate()) {
       return;
     }
-    await context.read<ProfileCubit>().completeInvitationProfile(
-          displayName: _nameController.text,
-          avatarIndex: _avatarIndex,
-        );
+    try {
+      await context.read<ProfileCubit>().completeInvitationProfile(
+            displayName: _nameController.text,
+            avatarIndex: _avatarIndex,
+          );
+    } catch (e) {
+      if (!mounted) return;
+      final msg = e is StateError
+          ? e.message
+          : (e is FirebaseException
+              ? (e.message ?? e.code)
+              : e.toString());
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg)),
+      );
+    }
   }
 
   @override
@@ -225,7 +238,7 @@ class _InviteProfileScreenState extends State<InviteProfileScreen> {
                                     strokeWidth: 2,
                                   ),
                                 )
-                              : const Text("Continue to home"),
+                              : const Text("Accept invitation and continue"),
                         );
                       },
                     ),

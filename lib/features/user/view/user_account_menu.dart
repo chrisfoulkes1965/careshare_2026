@@ -52,6 +52,17 @@ void showUserAccountMenu(
                 if (p != null) const Divider(),
                 if (p != null) ...[
                   ListTile(
+                    leading: const Icon(Icons.dashboard_customize_outlined),
+                    title: const Text("Homepage sections"),
+                    subtitle: const Text(
+                      "Today's needs, previews, urgent tasks, and activity",
+                    ),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      context.push("/user-settings/homepage");
+                    },
+                  ),
+                  ListTile(
                     leading: const Icon(Icons.face_outlined),
                     title: const Text("Profile & avatar"),
                     subtitle:

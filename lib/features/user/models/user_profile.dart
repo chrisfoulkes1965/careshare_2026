@@ -1,5 +1,7 @@
 import "package:equatable/equatable.dart";
 
+import "home_sections_visibility.dart";
+
 final class UserProfile extends Equatable {
   const UserProfile({
     required this.uid,
@@ -12,6 +14,7 @@ final class UserProfile extends Equatable {
     this.wizardSkipped = false,
     this.activeCareGroupId,
     this.wizardDraft,
+    this.homeSections,
   });
 
   final String uid;
@@ -25,7 +28,13 @@ final class UserProfile extends Equatable {
   final String? activeCareGroupId;
   final Map<String, dynamic>? wizardDraft;
 
+  /// When absent, treat as “show all” sections on the home landing page.
+  final HomeSectionsVisibility? homeSections;
+
   bool get needsWizard => !wizardCompleted && !wizardSkipped;
+
+  HomeSectionsVisibility get resolvedHomeSections =>
+      homeSections ?? const HomeSectionsVisibility();
 
   UserProfile copyWith({
     String? displayName,
@@ -36,6 +45,7 @@ final class UserProfile extends Equatable {
     bool? wizardSkipped,
     String? activeCareGroupId,
     Map<String, dynamic>? wizardDraft,
+    HomeSectionsVisibility? homeSections,
   }) {
     return UserProfile(
       uid: uid,
@@ -48,6 +58,7 @@ final class UserProfile extends Equatable {
       wizardSkipped: wizardSkipped ?? this.wizardSkipped,
       activeCareGroupId: activeCareGroupId ?? this.activeCareGroupId,
       wizardDraft: wizardDraft ?? this.wizardDraft,
+      homeSections: homeSections ?? this.homeSections,
     );
   }
 
@@ -63,5 +74,6 @@ final class UserProfile extends Equatable {
         wizardSkipped,
         activeCareGroupId,
         wizardDraft,
+        homeSections,
       ];
 }

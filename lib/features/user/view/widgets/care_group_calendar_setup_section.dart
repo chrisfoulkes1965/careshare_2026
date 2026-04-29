@@ -8,7 +8,8 @@ import "../../../care_group/models/care_group_option.dart";
 import "../../../profile/profile_cubit.dart";
 
 /// Loads and saves **`groupCalendar.{calendarId,icalUrl,timezone}`** on
-/// **`careGroups/{option.careGroupId}`** (care group administrator only — see Firestore rules).
+/// **`careGroups/{dataCareGroupId}`** — the document where shared calendar sync and
+/// `linkedCalendarEvents` live (matches [CareGroupOption.dataCareGroupId]).
 class CareGroupCalendarSetupSection extends StatefulWidget {
   const CareGroupCalendarSetupSection({super.key, required this.option});
 
@@ -38,7 +39,7 @@ class _CareGroupCalendarSetupSectionState
     try {
       final snap = await FirebaseFirestore.instance
           .collection("careGroups")
-          .doc(widget.option.careGroupId)
+          .doc(widget.option.dataCareGroupId)
           .get();
       final gc = snap.data()?["groupCalendar"];
       if (!mounted) {
@@ -74,7 +75,7 @@ class _CareGroupCalendarSetupSectionState
     final ms = ScaffoldMessenger.of(context);
     try {
       await context.read<ProfileCubit>().mergeCareGroupCalendar(
-            careGroupDocId: widget.option.careGroupId,
+            careGroupDocId: widget.option.dataCareGroupId,
             calendarId: _calendarId.text,
             icalUrl: _icalUrl.text,
             timezone: _timezone.text,
@@ -94,6 +95,15 @@ class _CareGroupCalendarSetupSectionState
       if (mounted) {
         setState(() => _saving = false);
       }
+    }
+  }
+
+  @override
+  void didUpdateWidget(CareGroupCalendarSetupSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.option.dataCareGroupId != oldWidget.option.dataCareGroupId ||
+        widget.option.careGroupId != oldWidget.option.careGroupId) {
+      unawaited(_load());
     }
   }
 

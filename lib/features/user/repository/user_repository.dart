@@ -3,6 +3,7 @@ import "package:firebase_auth/firebase_auth.dart";
 
 import "../../../core/firebase/firestore_remote_compat.dart";
 import "../../care_group/models/care_group_option.dart";
+import "../models/home_sections_visibility.dart";
 import "../models/user_profile.dart";
 
 class UserRepository {
@@ -56,6 +57,18 @@ class UserRepository {
       String uid, Map<String, dynamic> data) async {
     if (!_firebaseReady) return;
     await _userRef(uid).update(data);
+  }
+
+  Future<void> setHomeSectionsVisibility({
+    required String uid,
+    required HomeSectionsVisibility visibility,
+  }) async {
+    if (!_firebaseReady) {
+      return;
+    }
+    await _userRef(uid).update({
+      "homeSections": visibility.toFirestoreUpdate(),
+    });
   }
 
   /// One document per app install (see [installationId]). Used by Cloud Functions for FCM.
@@ -377,8 +390,16 @@ class UserRepository {
     );
   }
 
-  /// Every care group where `careGroups/{id}/members/{uid}` exists; deduped by linked data
-  /// document id, sorted by name.
+  /// Every care group where `careGroups/{id}/members/{uid}` exists.
+  ///
+  /// Multiple `members/` rows may point at the same shared data document (team shells
+  /// referencing `careGroupId` → merged home); we keep one option per **[resolved Data
+  /// doc]**, matching [CareGroupOption.dataCareGroupId] / [mergeCareGroupCalendar] /
+  /// [LinkedCalendarEventsRepository.watchLinkedEvents].
+  ///
+  /// When several rows resolve to the same data id, prefer the row whose
+  /// [careGroups] document id equals that id (canonical merged doc) over a shell —
+  /// so [profile.activeCareGroupId] aligns with calendar/tasks data paths consistently.
   ///
   /// Uses a [collectionGroup] query on `members` and reads linked [careGroups] (and the
   /// top-level home metadata collection when present) for display names.
@@ -394,7 +415,23 @@ class UserRepository {
       return const [];
     }
 
-    final byDataGroup = <String, CareGroupOption>{};
+    final byResolvedData = <String, CareGroupOption>{};
+
+    CareGroupOption pickPreferCanonical(
+      CareGroupOption prior,
+      CareGroupOption incoming,
+      String resolved,
+    ) {
+      final canonPrior = prior.careGroupId == resolved;
+      final canonInc = incoming.careGroupId == resolved;
+      if (canonInc && !canonPrior) {
+        return incoming;
+      }
+      if (canonPrior && !canonInc) {
+        return prior;
+      }
+      return prior;
+    }
 
     for (final memberDoc in membersSnap.docs) {
       final mData = memberDoc.data();
@@ -412,16 +449,18 @@ class UserRepository {
           .get();
       if (!cgSnap.exists) continue;
       final cgData = cgSnap.data()!;
-      // Linked home: stored as `careGroupId` on the care group document (see setup wizard / rules).
-      final linkedDataGroupId = cgData["careGroupId"] as String?;
-      if (linkedDataGroupId == null || linkedDataGroupId.isEmpty) continue;
-      if (byDataGroup.containsKey(linkedDataGroupId)) continue;
+      final rawLinked = cgData["careGroupId"];
+      final linkedTrim = rawLinked is String
+          ? rawLinked.trim()
+          : (rawLinked != null ? rawLinked.toString().trim() : "");
+      final resolvedDataGroupId =
+          linkedTrim.isNotEmpty ? linkedTrim : careGroupDocId;
 
       final cgName = (cgData["name"] as String?)?.trim();
       String? hName;
       final hSnap = await FirebaseFirestore.instance
           .collection(firestoreTopLevelHomeMetadataCollection())
-          .doc(linkedDataGroupId)
+          .doc(resolvedDataGroupId)
           .get();
       if (hSnap.exists) {
         hName = (hSnap.data()?["name"] as String?)?.trim();
@@ -434,7 +473,7 @@ class UserRepository {
       if (hName == null) {
         final hCg = await FirebaseFirestore.instance
             .collection("careGroups")
-            .doc(linkedDataGroupId)
+            .doc(resolvedDataGroupId)
             .get();
         if (hCg.exists) {
           fromCareGroupsHome = (hCg.data()?["name"] as String?)?.trim();
@@ -450,16 +489,24 @@ class UserRepository {
               : (fromCareGroupsHome != null && fromCareGroupsHome.isNotEmpty)
                   ? fromCareGroupsHome
                   : "Care group";
-      byDataGroup[linkedDataGroupId] = CareGroupOption(
+      final incoming = CareGroupOption(
         careGroupId: careGroupDocId,
-        dataCareGroupId: linkedDataGroupId,
+        dataCareGroupId: resolvedDataGroupId,
         displayName: name,
         roles: roles,
         themeColor: _parseThemeColorArgb(cgData),
       );
+
+      final prior = byResolvedData[resolvedDataGroupId];
+      if (prior == null) {
+        byResolvedData[resolvedDataGroupId] = incoming;
+      } else {
+        byResolvedData[resolvedDataGroupId] =
+            pickPreferCanonical(prior, incoming, resolvedDataGroupId);
+      }
     }
 
-    final list = byDataGroup.values.toList();
+    final list = byResolvedData.values.toList();
     list.sort(
       (a, b) =>
           a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase()),
@@ -479,6 +526,8 @@ class UserRepository {
       wizardSkipped: data["wizardSkipped"] as bool? ?? false,
       activeCareGroupId: data["activeCareGroupId"] as String?,
       wizardDraft: (data["wizardDraft"] as Map?)?.cast<String, dynamic>(),
+      homeSections:
+          HomeSectionsVisibility.fromFirestoreMap(data["homeSections"]),
     );
   }
 

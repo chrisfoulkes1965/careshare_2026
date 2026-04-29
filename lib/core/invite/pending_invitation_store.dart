@@ -1,3 +1,4 @@
+import "package:flutter/foundation.dart" show kIsWeb;
 import "package:shared_preferences/shared_preferences.dart";
 
 /// Persists `invitations/{id}` from `/sign-in?invite=` so it survives Google sign-in
@@ -12,6 +13,15 @@ abstract final class PendingInvitationStore {
     }
     final p = await SharedPreferences.getInstance();
     await p.setString(_key, t);
+  }
+
+  /// On Flutter web, persist `?invite=` before the first [ProfileCubit] load so
+  /// invitees always see [InviteProfileScreen] instead of silent redemption.
+  static Future<void> primeFromStartupUrlIfWeb() async {
+    if (!kIsWeb) {
+      return;
+    }
+    await saveFromQueryIfPresent(Uri.base.queryParameters["invite"]);
   }
 
   static Future<String?> read() async {

@@ -1,8 +1,10 @@
 import "package:flutter/material.dart";
 import "package:go_router/go_router.dart";
 
+import "../core/invite/invite_link_query_params.dart";
 import "../features/auth/bloc/auth_bloc.dart";
 import "../features/auth/bloc/auth_state.dart";
+import "../features/auth/invite_link_account_gate.dart";
 import "../features/auth/view/register_screen.dart";
 import "../features/auth/view/sign_in_screen.dart";
 import "../features/care_pathway/view/pathways_screen.dart";
@@ -26,6 +28,7 @@ import "../features/tasks/view/tasks_screen.dart";
 import "../features/user/view/care_group_settings_screen.dart";
 import "../features/user/view/user_settings_care_groups_screen.dart";
 import "../features/user/view/user_settings_profile_screen.dart";
+import "../features/user/view/user_settings_homepage_screen.dart";
 import "../features/user/view/user_settings_security_screen.dart";
 import "../features/profile/profile_cubit.dart";
 import "../features/profile/profile_state.dart";
@@ -56,6 +59,7 @@ abstract final class AppRouteNames {
   static const medicationDose = "medicationDose";
   static const userSettingsProfile = "userSettingsProfile";
   static const userSettingsCareGroups = "userSettingsCareGroups";
+  static const userSettingsHomepage = "userSettingsHomepage";
   static const userSettingsSecurity = "userSettingsSecurity";
   static const inviteProfile = "inviteProfile";
 }
@@ -75,11 +79,34 @@ abstract final class AppRouter {
         final profileState = profileCubit.state;
 
         if (authState.status == AuthStatus.unknown) {
-          return loc == "/loading" ? null : "/loading";
+          final sync = inviteAuthScreenSyncRedirectTarget(
+            matchedLocation: loc,
+            uri: state.uri,
+          );
+          if (sync != null) {
+            return sync;
+          }
+          if (inviteUriPointsAtAuthScreenWithInvite(state.uri) &&
+              loc == state.uri.path) {
+            return null;
+          }
+          if (loc == "/loading") return null;
+          return "/loading";
         }
 
         if (authState.status == AuthStatus.unauthenticated) {
-          if (loc == "/sign-in" || loc == "/register") return null;
+          final effUri = effectiveInviteAwareUri(state.uri);
+          final norm = normalizeAuthPath(effUri.path);
+          if (norm == "/sign-in" &&
+              effUri.queryParameters["invite"]?.trim().isNotEmpty == true) {
+            return Uri(
+              path: "/register",
+              queryParameters: effUri.queryParameters,
+            ).toString();
+          }
+          if (loc == "/sign-in" || loc == "/register") {
+            return null;
+          }
           return "/sign-in";
         }
 
@@ -90,6 +117,18 @@ abstract final class AppRouter {
 
         if (profileState is ProfileLoading ||
             profileState is ProfileAnonymous) {
+          /// Invite deep links must not bounce to [/loading]: that drops query
+          /// params before sign-in can run [inviteSignedLinkNeedsDifferentFirebaseUser]
+          /// and [SignInScreen] mismatch sign-out.
+          if (authState.status == AuthStatus.authenticated &&
+              inviteSignedLinkNeedsDifferentFirebaseUser(
+                authState: authState,
+                uri: state.uri,
+              )) {
+            if (loc == "/sign-in" || loc == "/register") {
+              return null;
+            }
+          }
           return loc == "/loading" ? null : "/loading";
         }
 
@@ -127,6 +166,15 @@ abstract final class AppRouter {
           if (loc.startsWith("/setup") && profile.wizardCompleted) {
             if (state.uri.queryParameters["edit"] != "1") {
               return "/home";
+            }
+          }
+
+          if (loc == "/sign-in" || loc == "/register") {
+            if (inviteSignedLinkNeedsDifferentFirebaseUser(
+                  authState: authState,
+                  uri: state.uri,
+                )) {
+              return null;
             }
           }
 
@@ -277,6 +325,11 @@ abstract final class AppRouter {
           path: "/user-settings/care-groups",
           name: AppRouteNames.userSettingsCareGroups,
           builder: (context, state) => const UserSettingsCareGroupsScreen(),
+        ),
+        GoRoute(
+          path: "/user-settings/homepage",
+          name: AppRouteNames.userSettingsHomepage,
+          builder: (context, state) => const UserSettingsHomepageScreen(),
         ),
         GoRoute(
           path: "/user-settings/security",

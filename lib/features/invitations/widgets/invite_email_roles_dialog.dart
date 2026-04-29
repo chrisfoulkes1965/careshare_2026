@@ -6,16 +6,23 @@ import "../../../core/care/role_label.dart";
 typedef InviteEmailRolesResult = ({String email, List<String> roles});
 
 /// Invite flow: recipient email plus which [kAssignableCareGroupRoles] they will receive.
-Future<InviteEmailRolesResult?> showInviteEmailRolesDialog(BuildContext context) {
+Future<InviteEmailRolesResult?> showInviteEmailRolesDialog(
+  BuildContext context, {
+  String? initialEmail,
+}) {
   return showDialog<InviteEmailRolesResult>(
     context: context,
     barrierDismissible: false,
-    builder: (dialogContext) => const _InviteEmailRolesDialog(),
+    builder: (dialogContext) => _InviteEmailRolesDialog(
+      initialEmail: initialEmail,
+    ),
   );
 }
 
 class _InviteEmailRolesDialog extends StatefulWidget {
-  const _InviteEmailRolesDialog();
+  const _InviteEmailRolesDialog({this.initialEmail});
+
+  final String? initialEmail;
 
   @override
   State<_InviteEmailRolesDialog> createState() =>
@@ -25,6 +32,15 @@ class _InviteEmailRolesDialog extends StatefulWidget {
 class _InviteEmailRolesDialogState extends State<_InviteEmailRolesDialog> {
   final _emailCtl = TextEditingController();
   final _selected = <String>{"carer"};
+
+  @override
+  void initState() {
+    super.initState();
+    final i = widget.initialEmail?.trim();
+    if (i != null && i.isNotEmpty) {
+      _emailCtl.text = i;
+    }
+  }
 
   @override
   void dispose() {

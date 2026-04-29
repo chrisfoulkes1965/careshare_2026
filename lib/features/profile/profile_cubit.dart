@@ -7,6 +7,7 @@ import "../auth/bloc/auth_bloc.dart";
 import "../auth/bloc/auth_state.dart";
 import "../care_group/models/care_group_option.dart";
 import "../invitations/repository/invitation_repository.dart";
+import "../user/models/home_sections_visibility.dart";
 import "../user/models/user_profile.dart";
 import "../user/repository/user_repository.dart";
 import "../../core/invite/pending_invitation_store.dart";
@@ -109,6 +110,29 @@ final class ProfileCubit extends Cubit<ProfileState> {
     }
   }
 
+  /// Persists which home landing sections to show (`users/{uid}.homeSections`).
+  Future<void> setHomeSectionsVisibility(HomeSectionsVisibility visibility) async {
+    final user = _authBloc.state.user;
+    if (user == null) {
+      return;
+    }
+    final previous = state;
+    try {
+      await _userRepository.setHomeSectionsVisibility(
+        uid: user.uid,
+        visibility: visibility,
+      );
+      await _load(user);
+    } catch (e) {
+      if (previous is ProfileReady) {
+        emit(previous);
+      } else {
+        emit(ProfileError(e.toString()));
+      }
+      rethrow;
+    }
+  }
+
   /// Picks a care group after login or from settings; updates Firestore and reloads profile.
   Future<void> selectActiveCareGroup(CareGroupOption option) async {
     final user = _authBloc.state.user;
@@ -177,58 +201,34 @@ final class ProfileCubit extends Cubit<ProfileState> {
         displayName: user.displayName ?? _emailLocal(user.email),
         photoUrl: user.photoURL,
       );
-      final deferredId = await PendingInvitationStore.read();
-      final deferInviteProfile = _invitationRepository.isAvailable &&
-          deferredId != null &&
-          deferredId.trim().isNotEmpty;
-
-      if (!deferInviteProfile) {
-        profile = await _maybeRedeemInvitationFromEmailLink(user, profile);
-        await _emitWithCareGroupOptions(user, profile);
-      } else {
-        await _emitWithCareGroupOptions(
-          user,
-          profile,
-          deferredInvitationId: deferredId,
-        );
+      var trimmedDefer = (await PendingInvitationStore.read())?.trim() ?? "";
+      if (trimmedDefer.isNotEmpty && _invitationRepository.isAvailable) {
+        try {
+          final stillPending = await _invitationRepository
+              .invitationIsAwaitingAcceptance(trimmedDefer);
+          if (!stillPending) {
+            await PendingInvitationStore.clear();
+            trimmedDefer = "";
+          }
+        } catch (_) {
+          // Offline or rules: keep invite flow so we do not wipe a valid id.
+        }
       }
+      final hasPendingInvite =
+          _invitationRepository.isAvailable && trimmedDefer.isNotEmpty;
+
+      // Redemption runs only from [completeInvitationProfile], not here — so invitees
+      // always confirm name/avatar on InviteProfileScreen after following a link.
+      await _emitWithCareGroupOptions(
+        user,
+        profile,
+        deferredInvitationId: hasPendingInvite ? trimmedDefer : null,
+      );
     } on TimeoutException {
       emit(const ProfileError("Profile load timed out. Please retry."));
     } catch (e) {
       emit(ProfileError(e.toString()));
     }
-  }
-
-  Future<UserProfile> _maybeRedeemInvitationFromEmailLink(
-    User user,
-    UserProfile profile,
-  ) async {
-    if (!_invitationRepository.isAvailable) {
-      return profile;
-    }
-    final id = await PendingInvitationStore.read();
-    if (id == null) {
-      return profile;
-    }
-    try {
-      final careGroupId =
-          await _invitationRepository.redeemInvitationForSignedInUser(
-        invitationId: id,
-        displayName: profile.displayName,
-      );
-      await PendingInvitationStore.clear();
-      if (careGroupId != null && careGroupId.isNotEmpty) {
-        await _userRepository.setActiveCareGroup(
-          uid: user.uid,
-          careGroupId: careGroupId,
-        );
-        final updated = await _userRepository.fetchProfile(user.uid);
-        return updated ?? profile.copyWith(activeCareGroupId: careGroupId);
-      }
-    } catch (_) {
-      await PendingInvitationStore.clear();
-    }
-    return profile;
   }
 
   Future<void> _emitWithCareGroupOptions(
@@ -275,9 +275,14 @@ final class ProfileCubit extends Cubit<ProfileState> {
       }
     }
 
+    // If the user belongs to exactly one team and has no active group chosen, attach them.
+    // Do NOT force-set [only] when [activeCareGroupId] is already nonempty but differs —
+    // that happens briefly after redeeming an invite (new membership appears in profile before
+    // the collection-group "members" query lists the invited group).
     if (options.length == 1) {
       final only = options.first;
-      if (p.activeCareGroupId != only.careGroupId) {
+      final activeTrim = (p.activeCareGroupId ?? "").trim();
+      if (activeTrim.isEmpty) {
         await _userRepository.setActiveCareGroup(
           uid: user.uid,
           careGroupId: only.careGroupId,
@@ -326,28 +331,27 @@ final class ProfileCubit extends Cubit<ProfileState> {
       return;
     }
 
+    final prev = state is ProfileReady ? state as ProfileReady : null;
+
     final trimmed = displayName.trim();
     final id =
         await PendingInvitationStore.read() ??
-            (state is ProfileReady
-                ? (state as ProfileReady).pendingInvitationId
-                : null);
+            (prev?.pendingInvitationId);
     if (id == null || id.isEmpty) {
-      await refresh();
-      return;
+      throw StateError(
+        "Your invitation could not be confirmed. Open the invite link from your email again.",
+      );
+    }
+
+    if (trimmed.isEmpty) {
+      throw StateError("Enter your name.");
+    }
+    if (avatarIndex < 1) {
+      throw StateError("Choose an avatar.");
     }
 
     emit(const ProfileLoading());
     try {
-      if (trimmed.isEmpty) {
-        await _load(user);
-        return;
-      }
-      if (avatarIndex < 1) {
-        await _load(user);
-        return;
-      }
-
       await _userRepository.ensureUserDocument(user);
       await _userRepository.updateProfileFields(user.uid, {
         "displayName": trimmed,
@@ -361,16 +365,26 @@ final class ProfileCubit extends Cubit<ProfileState> {
         displayName: trimmed,
         avatarIndex: avatarIndex,
       );
-      await PendingInvitationStore.clear();
-      if (careGroupId != null && careGroupId.isNotEmpty) {
-        await _userRepository.setActiveCareGroup(
-          uid: user.uid,
-          careGroupId: careGroupId,
+      if (careGroupId == null || careGroupId.isEmpty) {
+        throw StateError(
+          "This invitation could not be completed. It may no longer be pending, "
+          "or the invitation no longer exists.",
         );
       }
+
+      await PendingInvitationStore.clear();
+
+      await _userRepository.setActiveCareGroup(
+        uid: user.uid,
+        careGroupId: careGroupId,
+      );
+
       await _load(user);
-    } catch (e) {
-      await _load(user);
+    } catch (e, st) {
+      if (prev != null) {
+        emit(prev);
+      }
+      Error.throwWithStackTrace(e, st);
     }
   }
 

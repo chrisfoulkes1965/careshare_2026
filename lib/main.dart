@@ -5,6 +5,7 @@ import "package:flutter/material.dart";
 
 import "app.dart";
 import "core/avatars/avatar_choices.dart";
+import "core/invite/pending_invitation_store.dart";
 import "core/medication_reminders/medication_notification_service.dart";
 import "core/push/careshare_push_service.dart";
 import "firebase_options.dart";
@@ -17,6 +18,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage _) async {
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initAvatarAssetPaths();
+  await PendingInvitationStore.primeFromStartupUrlIfWeb();
 
   var firebaseReady = false;
   try {

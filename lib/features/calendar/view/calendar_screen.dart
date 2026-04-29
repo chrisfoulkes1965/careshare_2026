@@ -5,6 +5,7 @@ import "package:table_calendar/table_calendar.dart";
 import "package:url_launcher/url_launcher.dart";
 
 import "../../../core/theme/app_colors.dart";
+import "../../settings/domain/group_calendar_service.dart";
 import "../../calendar/models/linked_calendar_event.dart";
 import "../../calendar/repository/linked_calendar_events_repository.dart";
 import "../../meetings/cubit/meetings_cubit.dart";
@@ -117,7 +118,8 @@ class _CalendarBody extends StatelessWidget {
           builder: (context, mState) {
             return BlocBuilder<TasksCubit, TasksState>(
               builder: (context, tState) {
-                final linkedRepo = context.read<LinkedCalendarEventsRepository>();
+                final linkedRepo =
+                    context.read<LinkedCalendarEventsRepository>();
                 if (!linkedRepo.isAvailable) {
                   return _CalendarScaffold(
                     mState: mState,
@@ -126,14 +128,27 @@ class _CalendarBody extends StatelessWidget {
                     careGroupId: careGroupId,
                   );
                 }
-                return StreamBuilder<List<LinkedCalendarEvent>>(
-                  stream: linkedRepo.watchLinkedEvents(careGroupId),
-                  builder: (context, linkSnap) {
-                    return _CalendarScaffold(
-                      mState: mState,
-                      tState: tState,
-                      linkedEvents: linkSnap.data ?? const [],
-                      careGroupId: careGroupId,
+                return StreamBuilder<bool>(
+                  stream: context
+                      .read<GroupCalendarService>()
+                      .watchResolvedInboundCalendarForDataDoc(careGroupId),
+                  builder: (context, gate) {
+                    final mirrorAllowed =
+                        !gate.hasError && (gate.data ?? false);
+                    return StreamBuilder<List<LinkedCalendarEvent>>(
+                      stream: mirrorAllowed
+                          ? linkedRepo.watchLinkedEvents(careGroupId)
+                          : Stream<List<LinkedCalendarEvent>>.value(
+                              const <LinkedCalendarEvent>[],
+                            ),
+                      builder: (context, linkSnap) {
+                        return _CalendarScaffold(
+                          mState: mState,
+                          tState: tState,
+                          linkedEvents: linkSnap.data ?? const [],
+                          careGroupId: careGroupId,
+                        );
+                      },
                     );
                   },
                 );
