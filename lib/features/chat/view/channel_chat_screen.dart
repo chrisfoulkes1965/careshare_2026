@@ -1,7 +1,5 @@
 import "dart:async";
 
-import "package:cloud_firestore/cloud_firestore.dart";
-import "package:firebase_auth/firebase_auth.dart";
 import "package:flutter/foundation.dart" show kIsWeb;
 import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
@@ -9,8 +7,9 @@ import "package:go_router/go_router.dart";
 import "package:url_launcher/url_launcher.dart";
 
 import "../../../core/theme/app_colors.dart";
-import "../../profile/profile_cubit.dart";
-import "../../profile/profile_state.dart";
+import "../../profile/cubit/profile_cubit.dart";
+import "../../profile/cubit/profile_state.dart";
+import "../models/chat_channel.dart";
 import "../models/chat_message.dart";
 import "../repository/chat_repository.dart";
 import "../../members/models/care_group_member.dart";
@@ -168,8 +167,8 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
       if (cg == null || cg.isEmpty) {
         return;
       }
-      final u = FirebaseAuth.instance.currentUser?.uid;
-      if (u == null) {
+      final u = p.profile.uid;
+      if (u.isEmpty) {
         return;
       }
       unawaited(
@@ -252,8 +251,8 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
       return;
     }
     final cg = p.activeCareGroupDataId;
-    final u = FirebaseAuth.instance.currentUser?.uid;
-    if (cg == null || u == null) {
+    final u = p.profile.uid;
+    if (cg == null || cg.isEmpty || u.isEmpty) {
       return;
     }
     try {
@@ -301,6 +300,7 @@ class _ChannelChatScreenState extends State<ChannelChatScreen> {
           careGroupId: cg,
           memberListCareGroupId: membersDocId,
           channelId: widget.channelId,
+          myUid: profileState.profile.uid,
           textController: _text,
           sending: _sending,
           error: _error,
@@ -317,6 +317,7 @@ class _ChatContent extends StatelessWidget {
     required this.careGroupId,
     required this.memberListCareGroupId,
     required this.channelId,
+    required this.myUid,
     required this.textController,
     required this.sending,
     required this.error,
@@ -327,6 +328,7 @@ class _ChatContent extends StatelessWidget {
   final String careGroupId;
   final String memberListCareGroupId;
   final String channelId;
+  final String myUid;
   final TextEditingController textController;
   final bool sending;
   final String? error;
@@ -335,21 +337,24 @@ class _ChatContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final chRef = FirebaseFirestore.instance
-        .collection("careGroups")
-        .doc(careGroupId)
-        .collection("chatChannels")
-        .doc(channelId);
-    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
-      stream: chRef.snapshots(),
+    final repo = context.read<ChatRepository>();
+    return StreamBuilder<ChatChannel>(
+      stream: repo.watchChatChannel(careGroupId, channelId),
       builder: (context, chSnap) {
-        final d = chSnap.data?.data();
-        final title = (d != null ? (d["name"] as String?) : null)?.trim();
-        final waUrl = d != null
-            ? (d["whatsappInviteUrl"] is String
-                ? (d["whatsappInviteUrl"] as String).trim()
-                : "")
-            : "";
+        if (chSnap.hasError) {
+          return Scaffold(
+            appBar: AppBar(title: const Text("Channel")),
+            body: Center(child: Text(chSnap.error.toString())),
+          );
+        }
+        final ch = chSnap.data;
+        if (ch == null) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        final title = ch.name.trim();
+        final waUrl = ch.whatsappInviteUrl?.trim() ?? "";
         final hasWa = waUrl.isNotEmpty &&
             waUrl.toLowerCase().startsWith("https://chat.whatsapp.com/");
         return StreamBuilder<List<CareGroupMember>>(
@@ -357,12 +362,12 @@ class _ChatContent extends StatelessWidget {
               .read<MembersRepository>()
               .watchMembers(memberListCareGroupId),
           builder: (context, memSnap) {
-            final myUid = FirebaseAuth.instance.currentUser?.uid;
-            final canLink = _canManageWhatsappLink(memSnap.data, myUid);
+            final canLink =
+                _canManageWhatsappLink(memSnap.data, myUid.isEmpty ? null : myUid);
             return Scaffold(
               appBar: AppBar(
                 title: Text(
-                  (title == null || title.isEmpty) ? "Channel" : title,
+                  title.isEmpty ? "Channel" : title,
                 ),
                 leading: IconButton(
                   icon: const Icon(Icons.arrow_back),
@@ -536,6 +541,7 @@ class _ChatContent extends StatelessWidget {
                       careGroupId: careGroupId,
                       memberListCareGroupId: memberListCareGroupId,
                       channelId: channelId,
+                      myUid: myUid,
                     ),
                   ),
                   if (error != null)
@@ -606,11 +612,13 @@ class _MessagesPane extends StatelessWidget {
     required this.careGroupId,
     required this.memberListCareGroupId,
     required this.channelId,
+    required this.myUid,
   });
 
   final String careGroupId;
   final String memberListCareGroupId;
   final String channelId;
+  final String myUid;
 
   String _nameFor(
     String uid,
@@ -625,7 +633,6 @@ class _MessagesPane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final myUid = FirebaseAuth.instance.currentUser?.uid ?? "";
     final repo = context.read<ChatRepository>();
     if (!repo.isAvailable) {
       return const Center(child: Text("Chat is not available."));

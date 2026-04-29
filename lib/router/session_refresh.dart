@@ -3,7 +3,7 @@ import "dart:async";
 import "package:flutter/foundation.dart";
 
 import "../features/auth/bloc/auth_bloc.dart";
-import "../features/profile/profile_cubit.dart";
+import "../features/profile/cubit/profile_cubit.dart";
 
 /// Drives [GoRouter] refresh when auth or profile changes.
 final class SessionRefresh extends ChangeNotifier {

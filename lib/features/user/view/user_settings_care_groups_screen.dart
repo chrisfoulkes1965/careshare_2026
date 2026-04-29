@@ -4,8 +4,8 @@ import "package:go_router/go_router.dart";
 
 import "../../../core/care/role_label.dart";
 import "../../care_group/models/care_group_option.dart";
-import "../../profile/profile_cubit.dart";
-import "../../profile/profile_state.dart";
+import "../../profile/cubit/profile_cubit.dart";
+import "../../profile/cubit/profile_state.dart";
 
 class UserSettingsCareGroupsScreen extends StatelessWidget {
   const UserSettingsCareGroupsScreen({super.key});

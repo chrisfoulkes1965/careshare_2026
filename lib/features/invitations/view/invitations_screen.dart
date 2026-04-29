@@ -3,14 +3,14 @@ import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
 
 import "../../../core/care/role_label.dart";
-import "../../settings/domain/group_calendar_service.dart";
+import "../../settings/repository/group_calendar_service.dart";
 import "../../auth/bloc/auth_bloc.dart";
 import "../../calendar/models/linked_calendar_event.dart";
 import "../../calendar/repository/linked_calendar_events_repository.dart";
 import "../../members/models/care_group_member.dart";
 import "../../members/repository/members_repository.dart";
-import "../../profile/profile_cubit.dart";
-import "../../profile/profile_state.dart";
+import "../../profile/cubit/profile_cubit.dart";
+import "../../profile/cubit/profile_state.dart";
 import "../cubit/invitations_cubit.dart";
 import "../cubit/invitations_state.dart";
 import "../models/care_invitation.dart";

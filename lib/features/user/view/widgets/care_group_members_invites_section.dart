@@ -12,8 +12,8 @@ import "../../../invitations/models/care_invitation.dart";
 import "../../../invitations/repository/invitation_repository.dart";
 import "../../../members/models/care_group_member.dart";
 import "../../../members/repository/members_repository.dart";
-import "../../../profile/profile_cubit.dart";
-import "../../../profile/profile_state.dart";
+import "../../../profile/cubit/profile_cubit.dart";
+import "../../../profile/cubit/profile_state.dart";
 import "../../models/user_profile.dart";
 import "care_user_avatar.dart";
 

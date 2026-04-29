@@ -3,14 +3,14 @@ import "dart:async";
 import "package:firebase_auth/firebase_auth.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 
-import "../auth/bloc/auth_bloc.dart";
-import "../auth/bloc/auth_state.dart";
-import "../care_group/models/care_group_option.dart";
-import "../invitations/repository/invitation_repository.dart";
-import "../user/models/home_sections_visibility.dart";
-import "../user/models/user_profile.dart";
-import "../user/repository/user_repository.dart";
-import "../../core/invite/pending_invitation_store.dart";
+import "../../auth/bloc/auth_bloc.dart";
+import "../../auth/bloc/auth_state.dart";
+import "../../care_group/models/care_group_option.dart";
+import "../../invitations/repository/invitation_repository.dart";
+import "../../user/models/home_sections_visibility.dart";
+import "../../user/models/user_profile.dart";
+import "../../user/repository/user_repository.dart";
+import "../../../core/invite/pending_invitation_store.dart";
 import "profile_state.dart";
 
 final class ProfileCubit extends Cubit<ProfileState> {
@@ -214,6 +214,9 @@ final class ProfileCubit extends Cubit<ProfileState> {
           // Offline or rules: keep invite flow so we do not wipe a valid id.
         }
       }
+      // Another flow may clear [PendingInvitationStore] (e.g. redeem) while we await
+      // Firestore; stale client cache can also mis-report "pending". Sync with store.
+      trimmedDefer = (await PendingInvitationStore.read())?.trim() ?? "";
       final hasPendingInvite =
           _invitationRepository.isAvailable && trimmedDefer.isNotEmpty;
 
@@ -320,7 +323,6 @@ final class ProfileCubit extends Cubit<ProfileState> {
           .catchError((_) {}),
     );
   }
-
 
   Future<void> completeInvitationProfile({
     required String displayName,

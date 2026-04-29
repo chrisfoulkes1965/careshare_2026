@@ -7,7 +7,7 @@ import "package:flutter_bloc/flutter_bloc.dart";
 
 import "../cubit/medications_cubit.dart";
 import "../models/care_group_medication.dart";
-import "../rxnorm_medication_suggest_client.dart";
+import "../repository/rxnorm_medication_suggest_client.dart";
 
 class MedicationEditorSheet extends StatefulWidget {
   const MedicationEditorSheet({super.key, this.existing});

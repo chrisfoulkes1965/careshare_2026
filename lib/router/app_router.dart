@@ -5,6 +5,7 @@ import "../core/invite/invite_link_query_params.dart";
 import "../features/auth/bloc/auth_bloc.dart";
 import "../features/auth/bloc/auth_state.dart";
 import "../features/auth/invite_link_account_gate.dart";
+import "../features/auth/view/invite_existing_user_screen.dart";
 import "../features/auth/view/register_screen.dart";
 import "../features/auth/view/sign_in_screen.dart";
 import "../features/care_pathway/view/pathways_screen.dart";
@@ -30,14 +31,15 @@ import "../features/user/view/user_settings_care_groups_screen.dart";
 import "../features/user/view/user_settings_profile_screen.dart";
 import "../features/user/view/user_settings_homepage_screen.dart";
 import "../features/user/view/user_settings_security_screen.dart";
-import "../features/profile/profile_cubit.dart";
-import "../features/profile/profile_state.dart";
+import "../features/profile/cubit/profile_cubit.dart";
+import "../features/profile/cubit/profile_state.dart";
 import "../features/setup_wizard/view/setup_wizard_view.dart";
 import "session_refresh.dart";
 
 abstract final class AppRouteNames {
   static const signIn = "signIn";
   static const register = "register";
+  static const inviteExistingUser = "inviteExistingUser";
   static const home = "home";
   static const setup = "setup";
   static const comingSoon = "comingSoon";
@@ -104,7 +106,9 @@ abstract final class AppRouter {
               queryParameters: effUri.queryParameters,
             ).toString();
           }
-          if (loc == "/sign-in" || loc == "/register") {
+          if (loc == "/sign-in" ||
+              loc == "/register" ||
+              loc == "/invite-existing-user") {
             return null;
           }
           return "/sign-in";
@@ -125,7 +129,9 @@ abstract final class AppRouter {
                 authState: authState,
                 uri: state.uri,
               )) {
-            if (loc == "/sign-in" || loc == "/register") {
+            if (loc == "/sign-in" ||
+                loc == "/register" ||
+                loc == "/invite-existing-user") {
               return null;
             }
           }
@@ -169,16 +175,21 @@ abstract final class AppRouter {
             }
           }
 
-          if (loc == "/sign-in" || loc == "/register") {
+          if (loc == "/sign-in" ||
+              loc == "/register" ||
+              loc == "/invite-existing-user") {
             if (inviteSignedLinkNeedsDifferentFirebaseUser(
-                  authState: authState,
-                  uri: state.uri,
-                )) {
+              authState: authState,
+              uri: state.uri,
+            )) {
               return null;
             }
           }
 
-          if (loc == "/sign-in" || loc == "/register" || loc == "/loading") {
+          if (loc == "/sign-in" ||
+              loc == "/register" ||
+              loc == "/loading" ||
+              loc == "/invite-existing-user") {
             return "/home";
           }
         }
@@ -199,6 +210,11 @@ abstract final class AppRouter {
           path: "/register",
           name: AppRouteNames.register,
           builder: (context, state) => const RegisterScreen(),
+        ),
+        GoRoute(
+          path: "/invite-existing-user",
+          name: AppRouteNames.inviteExistingUser,
+          builder: (context, state) => const InviteExistingUserScreen(),
         ),
         GoRoute(
           path: "/invite-profile",

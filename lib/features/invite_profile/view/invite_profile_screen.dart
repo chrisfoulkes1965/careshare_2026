@@ -9,8 +9,8 @@ import "../../../core/constants/app_constants.dart";
 import "../../../core/invite/invitation_landing_preview.dart";
 import "../../../core/theme/app_assets.dart";
 import "../../../core/theme/app_colors.dart";
-import "../../profile/profile_cubit.dart";
-import "../../profile/profile_state.dart";
+import "../../profile/cubit/profile_cubit.dart";
+import "../../profile/cubit/profile_state.dart";
 
 /// Shown after signing in from an email invitation, before home: name + preset avatar.
 class InviteProfileScreen extends StatefulWidget {

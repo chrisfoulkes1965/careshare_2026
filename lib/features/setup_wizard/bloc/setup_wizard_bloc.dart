@@ -1,7 +1,7 @@
 import "package:flutter_bloc/flutter_bloc.dart";
 
 import "../../auth/bloc/auth_bloc.dart";
-import "../../profile/profile_cubit.dart";
+import "../../profile/cubit/profile_cubit.dart";
 import "../../user/models/user_profile.dart";
 import "../models/setup_models.dart";
 import "../repository/setup_repository.dart";

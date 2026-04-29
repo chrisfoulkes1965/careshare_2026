@@ -1,6 +1,5 @@
 import "dart:async";
 
-import "package:firebase_auth/firebase_auth.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 
 import "../models/chat_channel.dart";
@@ -11,22 +10,20 @@ final class ChannelsCubit extends Cubit<ChannelsState> {
   ChannelsCubit({
     required ChatRepository repository,
     required this.careGroupId,
+    required this.uid,
   })  : _repository = repository,
         super(const ChannelsInitial());
 
   final ChatRepository _repository;
   final String careGroupId;
+  final String uid;
+
   StreamSubscription<List<ChatChannel>>? _sub;
   int _unreadGen = 0;
 
   void subscribe() {
     if (!_repository.isAvailable) {
       emit(const ChannelsFailure("Firebase is not available."));
-      return;
-    }
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) {
-      emit(const ChannelsFailure("Not signed in."));
       return;
     }
     emit(const ChannelsLoading());
@@ -101,10 +98,6 @@ final class ChannelsCubit extends Cubit<ChannelsState> {
   Future<void> refresh() async {
     final s = state;
     if (s is! ChannelsDisplay) {
-      return;
-    }
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) {
       return;
     }
     await _onChannelList(

@@ -86,12 +86,77 @@ final class AuthBloc extends Bloc<AuthEvent, AuthState> {
     Emitter<AuthState> emit,
   ) async {
     try {
-      await _repository.createUserWithEmailAndPassword(
-        email: event.email,
-        password: event.password,
-      );
+      emit(const AuthState.unauthenticated());
+      try {
+        await _repository.signInWithEmailAndPassword(
+          email: event.email,
+          password: event.password,
+        );
+        return;
+      } on FirebaseAuthException catch (signInErr) {
+        final c = signInErr.code;
+        if (c == "user-not-found") {
+          await _repository.createUserWithEmailAndPassword(
+            email: event.email,
+            password: event.password,
+          );
+          return;
+        }
+        if (c == "wrong-password") {
+          emit(
+            const AuthState.unauthenticated(
+              registrationEmailAlreadyInUse: true,
+            ),
+          );
+          return;
+        }
+        if (c == "user-disabled") {
+          emit(
+            AuthState.unauthenticated(
+              errorMessage: signInErr.message ?? signInErr.code,
+            ),
+          );
+          return;
+        }
+        if (c == "invalid-credential" || c == "invalid-login-credentials") {
+          try {
+            await _repository.createUserWithEmailAndPassword(
+              email: event.email,
+              password: event.password,
+            );
+          } on FirebaseAuthException catch (createErr) {
+            if (createErr.code == "email-already-in-use") {
+              emit(
+                const AuthState.unauthenticated(
+                  registrationEmailAlreadyInUse: true,
+                ),
+              );
+            } else {
+              emit(
+                AuthState.unauthenticated(
+                  errorMessage: createErr.message ?? createErr.code,
+                ),
+              );
+            }
+          }
+          return;
+        }
+        emit(
+          AuthState.unauthenticated(
+            errorMessage: signInErr.message ?? signInErr.code,
+          ),
+        );
+      }
     } on FirebaseAuthException catch (e) {
-      emit(AuthState.unauthenticated(errorMessage: e.message ?? e.code));
+      if (e.code == "email-already-in-use") {
+        emit(
+          const AuthState.unauthenticated(
+            registrationEmailAlreadyInUse: true,
+          ),
+        );
+      } else {
+        emit(AuthState.unauthenticated(errorMessage: e.message ?? e.code));
+      }
     } catch (e) {
       emit(AuthState.unauthenticated(errorMessage: e.toString()));
     }
@@ -112,7 +177,8 @@ final class AuthBloc extends Bloc<AuthEvent, AuthState> {
     }
   }
 
-  Future<void> _onSignOut(AuthSignOutRequested event, Emitter<AuthState> emit) async {
+  Future<void> _onSignOut(
+      AuthSignOutRequested event, Emitter<AuthState> emit) async {
     await MedicationNotificationService.instance.cancelAll();
     await _repository.signOut();
   }

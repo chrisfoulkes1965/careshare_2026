@@ -4,8 +4,8 @@ import "package:go_router/go_router.dart";
 
 import "../../../core/theme/app_colors.dart";
 import "../../members/repository/members_repository.dart";
-import "../../profile/profile_cubit.dart";
-import "../../profile/profile_state.dart";
+import "../../profile/cubit/profile_cubit.dart";
+import "../../profile/cubit/profile_state.dart";
 import "../cubit/tasks_cubit.dart";
 import "../cubit/tasks_state.dart";
 import "../models/care_group_task.dart";

@@ -85,6 +85,36 @@ class ChatRepository {
     );
   }
 
+  /// Single chat channel doc for header UI (title, WhatsApp link). Emits defaults if missing.
+  Stream<ChatChannel> watchChatChannel(
+    String careGroupId,
+    String channelId,
+  ) {
+    if (!_firebaseReady) {
+      return const Stream.empty();
+    }
+    return _channels(careGroupId).doc(channelId).snapshots().map((s) {
+      if (!s.exists) {
+        return ChatChannel(
+          id: channelId,
+          name: "Channel",
+          memberUids: const <String>[],
+          createdBy: "",
+        );
+      }
+      final data = s.data();
+      if (data == null) {
+        return ChatChannel(
+          id: channelId,
+          name: "Channel",
+          memberUids: const <String>[],
+          createdBy: "",
+        );
+      }
+      return ChatChannel.fromDoc(s.id, data);
+    });
+  }
+
   /// Messages newest first.
   Stream<List<ChatMessage>> watchMessages(
     String careGroupId,

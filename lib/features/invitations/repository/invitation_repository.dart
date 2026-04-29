@@ -73,7 +73,7 @@ class InvitationRepository {
     final snap = await FirebaseFirestore.instance
         .collection("invitations")
         .doc(t)
-        .get();
+        .get(const GetOptions(source: Source.server));
     if (!snap.exists) {
       return false;
     }

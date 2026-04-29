@@ -1,9 +1,9 @@
 import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 
-import "../../../profile/profile_cubit.dart";
-import "../../../profile/profile_state.dart";
-import "../../domain/group_calendar_service.dart";
+import "../../../profile/cubit/profile_cubit.dart";
+import "../../../profile/cubit/profile_state.dart";
+import "../../repository/group_calendar_service.dart";
 import "calendar_subscription_sheet.dart";
 
 /// Care group settings entry: subscribe to the shared CareShare Google Calendar.

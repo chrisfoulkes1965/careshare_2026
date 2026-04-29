@@ -4,9 +4,9 @@ import "package:flutter_bloc/flutter_bloc.dart";
 
 import "package:go_router/go_router.dart";
 
-import "../../profile/profile_cubit.dart";
+import "../../profile/cubit/profile_cubit.dart";
 
-import "../../profile/profile_state.dart";
+import "../../profile/cubit/profile_state.dart";
 
 import "../models/home_sections_visibility.dart";
 

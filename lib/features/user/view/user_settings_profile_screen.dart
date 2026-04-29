@@ -6,8 +6,8 @@ import "../../../core/avatars/avatar_choices.dart";
 import "../../../core/theme/app_colors.dart";
 import "../../auth/bloc/auth_bloc.dart";
 import "../../auth/repository/auth_repository.dart";
-import "../../profile/profile_cubit.dart";
-import "../../profile/profile_state.dart";
+import "../../profile/cubit/profile_cubit.dart";
+import "../../profile/cubit/profile_state.dart";
 import "../repository/user_repository.dart";
 import "widgets/care_user_avatar.dart";
 

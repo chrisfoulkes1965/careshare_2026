@@ -102,6 +102,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
       setState(() {
         _invitePreview = p;
         _inviteLoading = false;
+        final invited = p?.invitedEmail.trim() ?? "";
+        if (invited.isNotEmpty) {
+          _emailController.text = invited;
+        }
       });
     } catch (_) {
       if (!mounted) {
@@ -158,8 +162,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
       path: routerUri.path,
       routerUri: routerUri,
     );
-    final hasInvite =
-        q["invite"] != null && q["invite"]!.trim().isNotEmpty;
+    final hasInvite = q["invite"] != null && q["invite"]!.trim().isNotEmpty;
+    final emailFromQuery = q["email"]?.trim() ?? "";
+    final emailLockedForInvite =
+        hasInvite && (emailFromQuery.isNotEmpty || _invitePreview != null);
 
     return Scaffold(
       appBar: AppBar(
@@ -168,8 +174,47 @@ class _RegisterScreenState extends State<RegisterScreen> {
       body: SafeArea(
         child: BlocConsumer<AuthBloc, AuthState>(
           listenWhen: (previous, current) =>
-              previous.errorMessage != current.errorMessage,
+              previous.errorMessage != current.errorMessage ||
+              previous.registrationEmailAlreadyInUse !=
+                  current.registrationEmailAlreadyInUse,
           listener: (context, state) {
+            if (state.status == AuthStatus.unauthenticated &&
+                state.registrationEmailAlreadyInUse) {
+              final routerUri = GoRouterState.of(context).uri;
+              final q = mergeInviteLinkQueryParams(
+                path: routerUri.path,
+                routerUri: routerUri,
+              );
+              final invite = q["invite"]?.trim();
+              if (invite != null && invite.isNotEmpty) {
+                final email = _emailController.text.trim();
+                final params = <String, String>{"invite": invite};
+                if (email.isNotEmpty) {
+                  params["email"] = email;
+                }
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (!context.mounted) {
+                    return;
+                  }
+                  context.go(
+                    Uri(
+                      path: "/invite-existing-user",
+                      queryParameters: params,
+                    ).toString(),
+                  );
+                });
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      "An account already exists for this email. Sign in "
+                      "instead.",
+                    ),
+                  ),
+                );
+              }
+              return;
+            }
             final message = state.errorMessage;
             if (message != null && message.isNotEmpty) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -253,11 +298,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         TextFormField(
                           controller: _emailController,
                           keyboardType: TextInputType.emailAddress,
+                          textInputAction: TextInputAction.next,
+                          readOnly: emailLockedForInvite,
+                          enableInteractiveSelection: emailLockedForInvite,
                           autofillHints: const [
                             AutofillHints.newUsername,
                             AutofillHints.email,
                           ],
-                          decoration: const InputDecoration(labelText: "Email"),
+                          decoration: InputDecoration(
+                            labelText: "Email",
+                            filled: emailLockedForInvite,
+                            helperText: emailLockedForInvite
+                                ? "Invitation email"
+                                : null,
+                          ),
                           validator: (value) {
                             if (value == null || value.trim().isEmpty) {
                               return "Enter your email";
@@ -265,12 +319,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             if (!value.contains("@")) {
                               return "Enter a valid email";
                             }
+                            if (_invitePreview != null) {
+                              final want = _invitePreview!.invitedEmail;
+                              if (value.trim().toLowerCase() != want) {
+                                return "Use the email this invitation was sent to.";
+                              }
+                            }
                             return null;
                           },
                         ),
                         if (_invitePreview != null &&
-                            _emailController.text.trim().toLowerCase() ==
-                                _invitePreview!.invitedEmail) ...[
+                            (emailLockedForInvite ||
+                                _emailController.text.trim().toLowerCase() ==
+                                    _invitePreview!.invitedEmail)) ...[
                           const SizedBox(height: 8),
                           Text(
                             "Invited as ${_invitePreview!.invitedEmail}",
@@ -303,8 +364,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             suffixIcon: IconButton(
                               onPressed: () {
                                 setState(
-                                  () =>
-                                      _obscurePassword = !_obscurePassword,
+                                  () => _obscurePassword = !_obscurePassword,
                                 );
                               },
                               icon: Icon(
@@ -334,8 +394,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                             suffixIcon: IconButton(
                               onPressed: () {
                                 setState(
-                                  () =>
-                                      _obscureConfirm = !_obscureConfirm,
+                                  () => _obscureConfirm = !_obscureConfirm,
                                 );
                               },
                               icon: Icon(
@@ -385,7 +444,22 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   void _submitEmailRegister() {
-    if (!_formKey.currentState!.validate()) return;
+    FocusScope.of(context).unfocus();
+    final form = _formKey.currentState;
+    if (form == null || !form.validate()) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Check the highlighted fields — passwords must match and use "
+            "at least 8 characters.",
+          ),
+        ),
+      );
+      return;
+    }
     context.read<AuthBloc>().add(
           AuthRegisterWithEmailRequested(
             email: _emailController.text.trim(),

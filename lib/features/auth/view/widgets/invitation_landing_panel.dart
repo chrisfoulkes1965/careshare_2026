@@ -9,9 +9,14 @@ class InvitationLandingPanel extends StatelessWidget {
   const InvitationLandingPanel({
     super.key,
     required this.preview,
+
+    /// When false, omits the long "Create account vs sign in" paragraph (e.g. on
+    /// [InviteExistingUserScreen] where the user already has an account).
+    this.showAccountCreationHints = true,
   });
 
   final InvitationLandingPreview preview;
+  final bool showAccountCreationHints;
 
   @override
   Widget build(BuildContext context) {
@@ -60,22 +65,24 @@ class InvitationLandingPanel extends StatelessWidget {
                 color: AppColors.grey500,
               ),
             ),
-            const SizedBox(height: 12),
-            Text(
-              "Haven't used CareShare with this email before? Tap Create account and choose a password, or Continue with Google. Already have an account? Sign in below or Continue with Google — use this same invited email.",
-              style: theme.textTheme.bodySmall?.copyWith(
-                height: 1.35,
-                color: AppColors.grey900,
-                fontWeight: FontWeight.w600,
+            if (showAccountCreationHints) ...[
+              const SizedBox(height: 12),
+              Text(
+                "Haven't used CareShare with this email before? Tap Create account and choose a password, or Continue with Google. Already have an account? Sign in below or Continue with Google — use this same invited email.",
+                style: theme.textTheme.bodySmall?.copyWith(
+                  height: 1.35,
+                  color: AppColors.grey900,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              "Use the same email this invitation was sent to.",
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: AppColors.grey500,
+              const SizedBox(height: 8),
+              Text(
+                "Use the same email this invitation was sent to.",
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: AppColors.grey500,
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),

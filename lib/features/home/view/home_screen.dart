@@ -8,8 +8,8 @@ import "../../../core/theme/app_colors.dart";
 import "../../../core/theme/care_group_header_theme.dart";
 import "../../auth/bloc/auth_bloc.dart";
 import "../../auth/bloc/auth_state.dart";
-import "../../profile/profile_cubit.dart";
-import "../../profile/profile_state.dart";
+import "../../profile/cubit/profile_cubit.dart";
+import "../../profile/cubit/profile_state.dart";
 import "home_landing_view.dart";
 import "widgets/care_action_card.dart";
 

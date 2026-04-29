@@ -118,28 +118,28 @@ class _UserSettingsSecurityScreenState
                       : () async {
                           setState(() => _sending = true);
                           final messenger = ScaffoldMessenger.of(context);
-                          try {
-                            await context
-                                .read<AuthRepository>()
-                                .sendPasswordResetEmail(email);
-                            if (context.mounted) {
-                              messenger.showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                      "Password reset email sent. Check your inbox."),
+                          final result = await context
+                              .read<AuthRepository>()
+                              .sendPasswordResetEmail(email);
+                          if (!mounted) {
+                            return;
+                          }
+                          setState(() => _sending = false);
+                          if (result.success) {
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text(
+                                    "Password reset email sent. Check your inbox."),
+                              ),
+                            );
+                          } else {
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  result.message ?? "Could not send email.",
                                 ),
-                              );
-                            }
-                          } catch (e) {
-                            if (context.mounted) {
-                              messenger.showSnackBar(
-                                SnackBar(content: Text(e.toString())),
-                              );
-                            }
-                          } finally {
-                            if (mounted) {
-                              setState(() => _sending = false);
-                            }
+                              ),
+                            );
                           }
                         },
                   child: _sending

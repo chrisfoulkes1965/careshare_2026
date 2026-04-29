@@ -4,8 +4,8 @@ import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
 
 import "../../../core/theme/app_colors.dart";
-import "../../profile/profile_cubit.dart";
-import "../../profile/profile_state.dart";
+import "../../profile/cubit/profile_cubit.dart";
+import "../../profile/cubit/profile_state.dart";
 import "../cubit/contacts_cubit.dart";
 import "../cubit/contacts_state.dart";
 import "../models/care_group_contact.dart";

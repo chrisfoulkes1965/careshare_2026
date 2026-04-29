@@ -56,7 +56,8 @@ class GroupCalendarService {
           .collection("careGroups")
           .doc(linked)
           .get();
-      if (o.exists && _localInboundCalendarFromCareGroupDoc(o.data() ?? {}).hasAny) {
+      if (o.exists &&
+          _localInboundCalendarFromCareGroupDoc(o.data() ?? {}).hasAny) {
         return true;
       }
     }
@@ -82,8 +83,10 @@ class GroupCalendarService {
     }
     final fb = FirebaseFirestore.instance;
     final docRef = fb.collection("careGroups").doc(id);
-    final shells =
-        fb.collection("careGroups").where("careGroupId", isEqualTo: id).limit(5);
+    final shells = fb
+        .collection("careGroups")
+        .where("careGroupId", isEqualTo: id)
+        .limit(5);
     Future<void> emit(StreamController<bool> c) async {
       try {
         final v = await hasResolvedInboundCalendarForDataDoc(id);
@@ -103,10 +106,8 @@ class GroupCalendarService {
     late StreamController<bool> c;
     c = StreamController<bool>(
       onListen: () {
-        subShellDoc =
-            docRef.snapshots().listen((_) => unawaited(emit(c)));
-        subShells =
-            shells.snapshots().listen((_) => unawaited(emit(c)));
+        subShellDoc = docRef.snapshots().listen((_) => unawaited(emit(c)));
+        subShells = shells.snapshots().listen((_) => unawaited(emit(c)));
         unawaited(emit(c));
       },
       onCancel: () async {

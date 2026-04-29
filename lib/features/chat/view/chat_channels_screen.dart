@@ -4,8 +4,8 @@ import "package:go_router/go_router.dart";
 
 import "../../../core/theme/app_colors.dart";
 import "../../auth/bloc/auth_bloc.dart";
-import "../../profile/profile_cubit.dart";
-import "../../profile/profile_state.dart";
+import "../../profile/cubit/profile_cubit.dart";
+import "../../profile/cubit/profile_state.dart";
 import "../cubit/channels_cubit.dart";
 import "../cubit/channels_state.dart";
 import "../repository/chat_repository.dart";
@@ -47,6 +47,7 @@ class ChatChannelsScreen extends StatelessWidget {
           create: (context) => ChannelsCubit(
             repository: context.read<ChatRepository>(),
             careGroupId: dataCg,
+            uid: state.profile.uid,
           )..subscribe(),
           child: _ChannelsScaffold(
             careGroupId: dataCg,

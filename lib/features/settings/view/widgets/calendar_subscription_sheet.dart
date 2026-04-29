@@ -1,7 +1,7 @@
 import "package:flutter/material.dart";
 import "package:flutter/services.dart";
 
-import "../../domain/group_calendar_service.dart";
+import "../../repository/group_calendar_service.dart";
 
 /// Bottom sheet shown from [CalendarSubscriptionTile]: iCal URL, copy, open in Google Calendar.
 Future<void> showGroupCalendarSubscriptionSheet(
@@ -69,7 +69,8 @@ Future<void> showGroupCalendarSubscriptionSheet(
                     ),
               ),
             ],
-            if (config.calendarId != null && config.calendarId!.trim().isNotEmpty)
+            if (config.calendarId != null &&
+                config.calendarId!.trim().isNotEmpty)
               Padding(
                 padding: const EdgeInsets.only(top: 12),
                 child: FilledButton.icon(

@@ -5,7 +5,7 @@ import "package:go_router/go_router.dart";
 
 import "../../auth/bloc/auth_bloc.dart";
 import "../../auth/bloc/auth_event.dart";
-import "../../profile/profile_state.dart";
+import "../../profile/cubit/profile_state.dart";
 import "widgets/care_user_avatar.dart";
 
 void showUserAccountMenu(

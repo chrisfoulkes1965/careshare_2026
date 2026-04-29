@@ -5,12 +5,12 @@ import "package:go_router/go_router.dart";
 
 import "../../../core/theme/app_colors.dart";
 import "../../care_group/models/care_group_option.dart";
-import "../../profile/profile_cubit.dart";
-import "../../profile/profile_state.dart";
+import "../../profile/cubit/profile_cubit.dart";
+import "../../profile/cubit/profile_state.dart";
 import "widgets/care_group_calendar_setup_section.dart";
 import "widgets/care_group_members_invites_section.dart";
 import "widgets/care_group_theme_picker_sheet.dart";
-import "../../settings/presentation/widgets/calendar_subscription_tile.dart";
+import "../../settings/view/widgets/calendar_subscription_tile.dart";
 
 /// Settings for the user’s [ProfileReady.profile.activeCareGroupId]: name, theme, setup wizard, members.
 void _careGroupSettingsPopOrHome(BuildContext context) {

@@ -1,6 +1,7 @@
 import "dart:async";
 
-import "package:firebase_auth/firebase_auth.dart";
+
+
 import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
@@ -396,19 +397,16 @@ class _SignInScreenState extends State<SignInScreen> {
     }
 
     final messenger = ScaffoldMessenger.of(context);
-    try {
-      await context.read<AuthRepository>().sendPasswordResetEmail(email);
-      if (!context.mounted) return;
+    final result =
+        await context.read<AuthRepository>().sendPasswordResetEmail(email);
+    if (!context.mounted) return;
+    if (result.success) {
       messenger.showSnackBar(
         const SnackBar(content: Text("Password reset email sent.")),
       );
-    } on FirebaseAuthException catch (e) {
+    } else {
       messenger.showSnackBar(
-        SnackBar(content: Text(e.message ?? e.code)),
-      );
-    } catch (e) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(e.toString())),
+        SnackBar(content: Text(result.message ?? "Something went wrong.")),
       );
     }
   }

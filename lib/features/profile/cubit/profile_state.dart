@@ -1,7 +1,7 @@
 import "package:equatable/equatable.dart";
 
-import "../care_group/models/care_group_option.dart";
-import "../user/models/user_profile.dart";
+import "../../care_group/models/care_group_option.dart";
+import "../../user/models/user_profile.dart";
 
 sealed class ProfileState extends Equatable {
   const ProfileState();
@@ -95,7 +95,7 @@ extension ProfileReadyActiveCareGroup on ProfileReady {
 
   /// `careGroups/{id}/members` — document id for the member list (and roles). Matches
   /// [UserProfile.activeCareGroupId] / [CareGroupOption.careGroupId] (the document that
-  /// holds the user’s [members] row), not the linked [CareGroupOption.dataCareGroupId].
+  /// holds the user's [members] row), not the linked [CareGroupOption.dataCareGroupId].
   String? get activeCareGroupMemberDocId {
     final opt = activeCareGroupOption;
     if (opt != null) {

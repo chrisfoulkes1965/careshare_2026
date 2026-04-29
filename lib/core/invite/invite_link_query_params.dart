@@ -10,7 +10,9 @@ Map<String, String> mergeInviteLinkQueryParams({
 }) {
   final merged = Map<String, String>.from(routerUri.queryParameters);
   final normPath = normalizeAuthPath(path);
-  if (normPath != "/sign-in" && normPath != "/register") {
+  if (normPath != "/sign-in" &&
+      normPath != "/register" &&
+      normPath != "/invite-existing-user") {
     return merged;
   }
   if (!kIsWeb) {

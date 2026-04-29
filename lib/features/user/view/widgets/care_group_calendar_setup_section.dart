@@ -5,7 +5,7 @@ import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 
 import "../../../care_group/models/care_group_option.dart";
-import "../../../profile/profile_cubit.dart";
+import "../../../profile/cubit/profile_cubit.dart";
 
 /// Loads and saves **`groupCalendar.{calendarId,icalUrl,timezone}`** on
 /// **`careGroups/{dataCareGroupId}`** — the document where shared calendar sync and

@@ -14,7 +14,9 @@ String? inviteAuthScreenSyncRedirectTarget({
     return null;
   }
   final path = normalizeAuthPath(effective.path);
-  if (path != "/sign-in" && path != "/register") {
+  if (path != "/sign-in" &&
+      path != "/register" &&
+      path != "/invite-existing-user") {
     return null;
   }
   if (matchedLocation == path) {
@@ -31,7 +33,9 @@ bool inviteUriPointsAtAuthScreenWithInvite(Uri uri) {
     return false;
   }
   final path = normalizeAuthPath(effective.path);
-  return path == "/sign-in" || path == "/register";
+  return path == "/sign-in" ||
+      path == "/register" ||
+      path == "/invite-existing-user";
 }
 
 /// True when [uri] contains both `invite` and `email` and the Firebase user is
@@ -51,9 +55,7 @@ bool inviteSignedLinkNeedsDifferentFirebaseUser({
   final inviteId = effective.queryParameters["invite"]?.trim();
   final invitedEmail =
       effective.queryParameters["email"]?.trim().toLowerCase() ?? "";
-  if (inviteId == null ||
-      inviteId.isEmpty ||
-      invitedEmail.isEmpty) {
+  if (inviteId == null || inviteId.isEmpty || invitedEmail.isEmpty) {
     return false;
   }
   final current = authState.user!.email?.trim().toLowerCase();
