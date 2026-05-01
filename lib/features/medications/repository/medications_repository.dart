@@ -7,6 +7,7 @@ import "package:firebase_storage/firebase_storage.dart";
 
 import "../models/care_group_medication.dart";
 import "../models/medication_batch_prep_doc.dart";
+import "../models/medication_dose_log.dart";
 import "../../tasks/repository/platform_file_read_io.dart" if (dart.library.html) "../../tasks/repository/platform_file_read_web.dart" as platform_file_read;
 
 Map<String, dynamic> _scheduleFields({
@@ -111,6 +112,39 @@ class MedicationsRepository {
     );
   }
 
+  Stream<List<MedicationDoseLogEntry>> watchRecentDoseLogs({
+    required String careGroupId,
+    required String medicationId,
+    int limit = 25,
+  }) {
+    if (!_firebaseReady) {
+      return const Stream.empty();
+    }
+    final lim = limit.clamp(1, 100);
+    return _medications(careGroupId)
+        .doc(medicationId)
+        .collection("doseLogs")
+        .orderBy("takenAt", descending: true)
+        .limit(lim)
+        .snapshots()
+        .map((s) => s.docs.map(MedicationDoseLogEntry.fromDoc).toList());
+  }
+
+  /// Carers may only patch [quantityOnHand] on the medication document (see Firestore rules).
+  Future<void> patchMedicationQuantityOnly({
+    required String careGroupId,
+    required String medicationId,
+    required int quantityOnHand,
+  }) {
+    if (!_firebaseReady) {
+      return Future.error(StateError("Firebase is not available."));
+    }
+    final q = quantityOnHand.clamp(0, 0x3fffffff);
+    return _withOpTimeout(
+      _medications(careGroupId).doc(medicationId).update({"quantityOnHand": q}),
+    );
+  }
+
   Stream<List<CareGroupMedication>> watchMedications(String careGroupId) {
     if (!_firebaseReady) {
       return const Stream.empty();
@@ -201,6 +235,7 @@ class MedicationsRepository {
   Future<void> addMedication({
     required String careGroupId,
     required String name,
+    String medicationForm = "",
     String dosage = "",
     String instructions = "",
     String notes = "",
@@ -220,6 +255,7 @@ class MedicationsRepository {
     return _withOpTimeout(_addMedicationWork(
       careGroupId: careGroupId,
       name: name,
+      medicationForm: medicationForm,
       dosage: dosage,
       instructions: instructions,
       notes: notes,
@@ -238,6 +274,7 @@ class MedicationsRepository {
   Future<void> _addMedicationWork({
     required String careGroupId,
     required String name,
+    String medicationForm = "",
     String dosage = "",
     String instructions = "",
     String notes = "",
@@ -261,6 +298,7 @@ class MedicationsRepository {
     }
     final data = <String, dynamic>{
       "name": t,
+      "medicationForm": medicationForm.trim(),
       "dosage": dosage.trim(),
       "instructions": instructions.trim(),
       "notes": notes.trim(),
@@ -311,6 +349,7 @@ class MedicationsRepository {
     required String careGroupId,
     required String medicationId,
     required String name,
+    String medicationForm = "",
     String dosage = "",
     String instructions = "",
     String notes = "",
@@ -334,6 +373,7 @@ class MedicationsRepository {
       careGroupId: careGroupId,
       medicationId: medicationId,
       name: name,
+      medicationForm: medicationForm,
       dosage: dosage,
       instructions: instructions,
       notes: notes,
@@ -356,6 +396,7 @@ class MedicationsRepository {
     required String careGroupId,
     required String medicationId,
     required String name,
+    String medicationForm = "",
     String dosage = "",
     String instructions = "",
     String notes = "",
@@ -378,6 +419,7 @@ class MedicationsRepository {
     }
     final patch = <String, dynamic>{
       "name": t,
+      "medicationForm": medicationForm.trim(),
       "dosage": dosage.trim(),
       "instructions": instructions.trim(),
       "notes": notes.trim(),

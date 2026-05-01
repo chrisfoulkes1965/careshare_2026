@@ -17,6 +17,35 @@ service cloud.firestore {
       return signedIn() && request.auth.uid == uid;
     }
 
+    /// Submitter must have reimbursement payment details before creating an expense.
+    function userExpensePaymentDetailsComplete(uid) {
+      let path = /databases/$(database)/documents/users/$(uid);
+      return exists(path)
+        && get(path).data.keys().hasAny(['expensePaymentDetails'])
+        && get(path).data.expensePaymentDetails is map
+        && get(path).data.expensePaymentDetails.accountHolderName is string
+        && get(path).data.expensePaymentDetails.accountHolderName.size() >= 2
+        && get(path).data.expensePaymentDetails.accountHolderName.size() <= 200
+        && (
+          (
+            get(path).data.expensePaymentDetails.keys().hasAny(['iban'])
+            && get(path).data.expensePaymentDetails.iban is string
+            && get(path).data.expensePaymentDetails.iban.size() >= 8
+            && get(path).data.expensePaymentDetails.iban.size() <= 34
+          )
+          || (
+            get(path).data.expensePaymentDetails.keys().hasAny(['sortCode'])
+            && get(path).data.expensePaymentDetails.sortCode is string
+            && get(path).data.expensePaymentDetails.sortCode.size() >= 4
+            && get(path).data.expensePaymentDetails.sortCode.size() <= 16
+            && get(path).data.expensePaymentDetails.keys().hasAny(['accountNumber'])
+            && get(path).data.expensePaymentDetails.accountNumber is string
+            && get(path).data.expensePaymentDetails.accountNumber.size() >= 4
+            && get(path).data.expensePaymentDetails.accountNumber.size() <= 18
+          )
+        );
+    }
+
     function memberDoc(careGroupId, uid) {
       return /databases/$(database)/documents/careGroups/$(careGroupId)/members/$(uid);
     }
@@ -77,15 +106,33 @@ service cloud.firestore {
       return signedIn() && hasRole(team, request.auth.uid, 'care_group_administrator');
     }
 
-    /// Updates that only touch shared home labels / linked calendar config (not recipients, pathways, etc.).
-    function careGroupNameThemeOrCalendarPatchOnly() {
-      return diffKeys().hasOnly(['name'])
-        || diffKeys().hasOnly(['themeColor'])
-        || diffKeys().hasOnly(['groupCalendar'])
-        || diffKeys().hasOnly(['name', 'themeColor'])
-        || diffKeys().hasOnly(['name', 'groupCalendar'])
-        || diffKeys().hasOnly(['themeColor', 'groupCalendar'])
-        || diffKeys().hasOnly(['name', 'themeColor', 'groupCalendar']);
+    /// Updates that only touch shared home labels, linked calendar, or homepage section caps.
+    function homepageSectionsPolicyMapOk(p) {
+      return p is map
+        && p.keys().hasOnly([
+          'todaysNeeds', 'calendarEvents', 'tasks', 'medications',
+          'expenses', 'urgentTasks', 'recentActivity',
+          'comingUp', 'tasksStrip', 'medicationsStrip', 'expensesStrip'
+        ])
+        && (!p.keys().hasAny(['todaysNeeds']) || p.todaysNeeds is bool)
+        && (!p.keys().hasAny(['calendarEvents']) || p.calendarEvents is bool)
+        && (!p.keys().hasAny(['tasks']) || p.tasks is bool)
+        && (!p.keys().hasAny(['medications']) || p.medications is bool)
+        && (!p.keys().hasAny(['expenses']) || p.expenses is bool)
+        && (!p.keys().hasAny(['urgentTasks']) || p.urgentTasks is bool)
+        && (!p.keys().hasAny(['recentActivity']) || p.recentActivity is bool)
+        && (!p.keys().hasAny(['comingUp']) || p.comingUp is bool)
+        && (!p.keys().hasAny(['tasksStrip']) || p.tasksStrip is bool)
+        && (!p.keys().hasAny(['medicationsStrip']) || p.medicationsStrip is bool)
+        && (!p.keys().hasAny(['expensesStrip']) || p.expensesStrip is bool);
+    }
+
+    function careGroupAdministratorCosmeticPatchOk() {
+      let dk = diffKeys();
+      return dk.hasOnly(['name', 'themeColor', 'groupCalendar', 'homepageSectionsPolicy'])
+        && (!dk.hasAny(['homepageSectionsPolicy'])
+          || !request.resource.data.keys().hasAny(['homepageSectionsPolicy'])
+          || homepageSectionsPolicyMapOk(request.resource.data.homepageSectionsPolicy));
     }
 
     function careGroupLegacyLinkFieldStable() {
@@ -167,7 +214,7 @@ service cloud.firestore {
 
     function medicationPrincipalPatchKeys() {
       return [
-        'name', 'dosage', 'instructions', 'notes', 'photoUrl',
+        'name', 'medicationForm', 'dosage', 'instructions', 'notes', 'photoUrl',
         'reminderEnabled', 'reminderTimes', 'reminderSchedule', 'reminderWeekdays', 'reminderMonthDays',
         'quantityOnHand', 'lowStockThreshold',
       ];
@@ -184,6 +231,9 @@ service cloud.firestore {
         && request.resource.data.name is string
         && request.resource.data.name.size() >= 1
         && request.resource.data.name.size() <= 200
+        && (!request.resource.data.keys().hasAny(['medicationForm']) || (
+          request.resource.data.medicationForm is string && request.resource.data.medicationForm.size() <= 200
+        ))
         && (!request.resource.data.keys().hasAny(['dosage']) || (
           request.resource.data.dosage is string && request.resource.data.dosage.size() <= 4000
         ))
@@ -232,13 +282,23 @@ service cloud.firestore {
 
     function medicationCreateKeysOk() {
       return request.resource.data.keys().hasOnly([
-        'name', 'dosage', 'instructions', 'notes', 'photoUrl',
+        'name', 'medicationForm', 'dosage', 'instructions', 'notes', 'photoUrl',
         'reminderEnabled', 'reminderTimes', 'reminderSchedule', 'reminderWeekdays', 'reminderMonthDays',
         'quantityOnHand', 'lowStockThreshold', 'createdBy', 'createdAt',
       ]);
     }
 
     function canAuthorCareGroupNotes(careGroupId) {
+      let team = careTeamId(careGroupId);
+      return hasAnyRole(team, request.auth.uid, [
+        'principal_carer',
+        'carer',
+        'power_of_attorney',
+        'care_group_administrator',
+      ]);
+    }
+
+    function canManageDocumentLibrary(careGroupId) {
       let team = careTeamId(careGroupId);
       return hasAnyRole(team, request.auth.uid, [
         'principal_carer',
@@ -306,6 +366,10 @@ service cloud.firestore {
 
     match /users/{userId}/devicePushTokens/{docId} {
       allow read, create, update, delete: if isSelf(userId);
+    }
+
+    match /users/{userId}/medicationReminderDedup/{slotId} {
+      allow read, write: if false;
     }
 
     match /invitations/{invitationId} {
@@ -452,18 +516,18 @@ service cloud.firestore {
         )
       );
 
-      // Name, theme, and linked calendar config: **care_group_administrator only** (principal carer excluded).
-      // Other careGroups fields: principal carer or care group administrator without touching appearance/calendar keys.
+      // Name, theme, linked calendar, homepage section caps: **care_group_administrator only** (principal carer excluded).
+      // Other careGroups fields: principal carer or care group administrator without touching those keys.
       allow update: if signedIn()
         && (
           (
             isCareGroupAdministratorForGroup(careGroupId)
-            && careGroupNameThemeOrCalendarPatchOnly()
+            && careGroupAdministratorCosmeticPatchOk()
             && careGroupLegacyLinkFieldStable()
           )
           || (
             isPrincipalCarerOrCareGroupAdminForCareGroup(careGroupId)
-            && !diffKeys().hasAny(['name', 'themeColor', 'groupCalendar'])
+            && !diffKeys().hasAny(['name', 'themeColor', 'groupCalendar', 'homepageSectionsPolicy'])
             && careGroupLegacyLinkFieldStable()
           )
         );
@@ -534,6 +598,9 @@ service cloud.firestore {
           && request.resource.data.name is string
           && request.resource.data.name.size() >= 1
           && request.resource.data.name.size() <= 200
+          && (!request.resource.data.keys().hasAny(['medicationForm']) || (
+            request.resource.data.medicationForm is string && request.resource.data.medicationForm.size() <= 200
+          ))
           && (!request.resource.data.keys().hasAny(['dosage']) || (
             request.resource.data.dosage is string && request.resource.data.dosage.size() <= 4000
           ))
@@ -629,10 +696,71 @@ service cloud.firestore {
                 && request.resource.data.receiptUrl.size() <= 2048));
         }
 
+        function expenseNowStatus(data) {
+          return data.keys().hasAny(['expenseStatus']) && data.expenseStatus is string
+            ? data.expenseStatus
+            : 'approved';
+        }
+
+        function expenseContentUpdateOk(careGroupId) {
+          let cur = expenseNowStatus(resource.data);
+          return isFinancialOrPrincipalForCareGroup(careGroupId)
+            && request.resource.data.createdBy == resource.data.createdBy
+            && diffKeys().hasOnly([
+              'title', 'amount', 'currency', 'spentAt', 'category', 'payee', 'notes',
+              'receiptUrl', 'updatedAt',
+            ])
+            && request.resource.data.title is string
+            && request.resource.data.title.size() >= 1
+            && request.resource.data.title.size() <= 200
+            && request.resource.data.amount is number
+            && request.resource.data.amount > 0
+            && request.resource.data.amount < 1000000000000
+            && request.resource.data.currency is string
+            && request.resource.data.currency.size() >= 1
+            && request.resource.data.currency.size() <= 8
+            && request.resource.data.spentAt is timestamp
+            && expenseOptionalStringsOk()
+            && (cur == 'submitted' || cur == 'approved');
+        }
+
+        function expenseReviewUpdateOk(careGroupId) {
+          let before = expenseNowStatus(resource.data);
+          let afterData = request.resource.data;
+          let after = expenseNowStatus(afterData);
+          let uid = request.auth.uid;
+          return isFinancialOrPrincipalForCareGroup(careGroupId)
+            && afterData.createdBy == resource.data.createdBy
+            && diffKeys().hasOnly([
+              'expenseStatus', 'rejectionReason', 'reviewedAt', 'reviewedBy',
+              'paidAt', 'paidBy', 'paymentClaimId', 'updatedAt',
+            ])
+            && (
+              (before == 'submitted' && after == 'approved'
+                && afterData.reviewedBy == uid
+                && afterData.reviewedAt is timestamp
+                && !afterData.keys().hasAny(['rejectionReason']))
+              || (before == 'submitted' && after == 'rejected'
+                && afterData.rejectionReason is string
+                && afterData.rejectionReason.size() >= 1
+                && afterData.rejectionReason.size() <= 2000
+                && afterData.reviewedBy == uid
+                && afterData.reviewedAt is timestamp)
+              || (before == 'approved' && after == 'paid'
+                && afterData.paidBy == uid
+                && afterData.paidAt is timestamp
+                && (!afterData.keys().hasAny(['paymentClaimId'])
+                  || (afterData.paymentClaimId is string
+                    && afterData.paymentClaimId.size() >= 1
+                    && afterData.paymentClaimId.size() <= 128)))
+            );
+        }
+
         allow read: if isCareGroupMember(careGroupId) && isExpenseReaderForCareGroup(careGroupId);
 
         allow create: if isCareGroupMember(careGroupId)
           && isFinancialOrPrincipalForCareGroup(careGroupId)
+          && userExpensePaymentDetailsComplete(request.auth.uid)
           && request.resource.data.keys().hasAll([
             'title', 'amount', 'currency', 'spentAt', 'createdBy', 'createdAt',
           ])
@@ -647,28 +775,53 @@ service cloud.firestore {
           && request.resource.data.currency.size() >= 1
           && request.resource.data.currency.size() <= 8
           && request.resource.data.spentAt is timestamp
-          && expenseOptionalStringsOk();
+          && expenseOptionalStringsOk()
+          && (!request.resource.data.keys().hasAny(['expenseStatus'])
+            || request.resource.data.expenseStatus == 'submitted')
+          && !request.resource.data.keys().hasAny([
+            'rejectionReason', 'reviewedAt', 'reviewedBy', 'paidAt', 'paidBy', 'paymentClaimId',
+          ]);
 
         allow update: if isCareGroupMember(careGroupId)
-          && isFinancialOrPrincipalForCareGroup(careGroupId)
-          && request.resource.data.createdBy == resource.data.createdBy
-          && diffKeys().hasOnly([
-            'title', 'amount', 'currency', 'spentAt', 'category', 'payee', 'notes', 'receiptUrl', 'updatedAt',
-          ])
-          && request.resource.data.title is string
-          && request.resource.data.title.size() >= 1
-          && request.resource.data.title.size() <= 200
-          && request.resource.data.amount is number
-          && request.resource.data.amount > 0
-          && request.resource.data.amount < 1000000000000
-          && request.resource.data.currency is string
-          && request.resource.data.currency.size() >= 1
-          && request.resource.data.currency.size() <= 8
-          && request.resource.data.spentAt is timestamp
-          && expenseOptionalStringsOk();
+          && (expenseContentUpdateOk(careGroupId) || expenseReviewUpdateOk(careGroupId));
 
         allow delete: if isCareGroupMember(careGroupId)
           && isFinancialOrPrincipalForCareGroup(careGroupId);
+      }
+
+      // One document per batch payment — triggers a single “expenses paid” email to [payeeUid].
+      match /expensePaymentClaims/{claimId} {
+        allow read: if isCareGroupMember(careGroupId) && isExpenseReaderForCareGroup(careGroupId);
+
+        allow create: if isCareGroupMember(careGroupId)
+          && isFinancialOrPrincipalForCareGroup(careGroupId)
+          && claimId is string
+          && claimId.size() >= 4
+          && claimId.size() <= 128
+          && request.resource.data.keys().hasAll([
+            'payeeUid', 'expenseIds', 'currency', 'totalAmount', 'paidBy', 'paidAt', 'expenseTitlePreview',
+          ])
+          && request.resource.data.keys().hasOnly([
+            'payeeUid', 'expenseIds', 'currency', 'totalAmount', 'paidBy', 'paidAt', 'expenseTitlePreview',
+          ])
+          && request.resource.data.payeeUid is string
+          && request.resource.data.payeeUid.size() >= 1
+          && request.resource.data.payeeUid.size() <= 128
+          && request.resource.data.expenseIds is list
+          && request.resource.data.expenseIds.size() >= 1
+          && request.resource.data.expenseIds.size() <= 100
+          && request.resource.data.currency is string
+          && request.resource.data.currency.size() >= 1
+          && request.resource.data.currency.size() <= 8
+          && request.resource.data.totalAmount is number
+          && request.resource.data.totalAmount > 0
+          && request.resource.data.totalAmount < 1000000000000
+          && request.resource.data.paidBy == request.auth.uid
+          && request.resource.data.paidAt is timestamp
+          && request.resource.data.expenseTitlePreview is string
+          && request.resource.data.expenseTitlePreview.size() <= 2000;
+
+        allow update, delete: if false;
       }
 
       match /linkedCalendarEvents/{linkedEventId} {
@@ -685,6 +838,157 @@ service cloud.firestore {
           && isCarerOrPrincipalForCareGroup(careGroupId);
 
         allow delete: if isPrincipalCarerOrCareGroupAdminForCareGroup(careGroupId);
+      }
+
+      // Shared document library (Storage objects are never hard-deleted from the app).
+      match /docLibraryFolders/{folderId} {
+        function docLibraryFolderCreateOk() {
+          return request.resource.data.keys().hasAll([
+            'name', 'parentFolderId', 'inTrash', 'createdBy', 'createdAt', 'updatedAt',
+          ])
+            && request.resource.data.name is string
+            && request.resource.data.name.size() >= 1
+            && request.resource.data.name.size() <= 200
+            && request.resource.data.parentFolderId is string
+            && request.resource.data.parentFolderId.size() <= 200
+            && request.resource.data.inTrash is bool
+            && request.resource.data.inTrash == false
+            && request.resource.data.createdBy is string
+            && request.resource.data.createdBy == request.auth.uid
+            && request.resource.data.keys().hasOnly([
+              'name', 'parentFolderId', 'inTrash', 'createdBy', 'createdAt', 'updatedAt',
+            ]);
+        }
+
+        function docLibraryFolderUpdateOk() {
+          return (!request.resource.data.keys().hasAny(['createdBy'])
+            || request.resource.data.createdBy == resource.data.createdBy);
+        }
+
+        allow read: if isCareGroupMember(careGroupId) && !isReceivesCareOnlyMember(careGroupId);
+
+        allow create: if isCareGroupMember(careGroupId)
+          && canManageDocumentLibrary(careGroupId)
+          && docLibraryFolderCreateOk();
+
+        allow update: if isCareGroupMember(careGroupId)
+          && canManageDocumentLibrary(careGroupId)
+          && request.resource.data.createdBy == resource.data.createdBy
+          && docLibraryFolderUpdateOk()
+          && diffKeys().hasOnly(['name', 'parentFolderId', 'inTrash', 'trashedAt', 'updatedAt'])
+          && (!request.resource.data.keys().hasAny(['inTrash']) || request.resource.data.inTrash is bool)
+          && (!request.resource.data.keys().hasAny(['name'])
+            || (request.resource.data.name is string
+              && request.resource.data.name.size() >= 1
+              && request.resource.data.name.size() <= 200))
+          && (!request.resource.data.keys().hasAny(['parentFolderId'])
+            || (request.resource.data.parentFolderId is string
+              && request.resource.data.parentFolderId.size() <= 200));
+
+        allow delete: if false;
+      }
+
+      match /docLibraryFiles/{fileId} {
+        function docLibraryFileCreateOk() {
+          return request.resource.data.keys().hasAll([
+            'displayName', 'storagePath', 'downloadUrl', 'sizeBytes', 'folderId', 'inTrash', 'uploadedBy', 'uploadedAt', 'updatedAt',
+          ])
+            && request.resource.data.keys().hasOnly([
+              'displayName', 'storagePath', 'downloadUrl', 'sizeBytes', 'folderId', 'inTrash', 'uploadedBy', 'uploadedAt', 'updatedAt', 'contentType',
+            ])
+            && request.resource.data.displayName is string
+            && request.resource.data.displayName.size() >= 1
+            && request.resource.data.displayName.size() <= 500
+            && request.resource.data.storagePath is string
+            && request.resource.data.storagePath.size() >= 1
+            && request.resource.data.storagePath.size() <= 1024
+            && request.resource.data.downloadUrl is string
+            && request.resource.data.downloadUrl.size() >= 1
+            && request.resource.data.downloadUrl.size() <= 2048
+            && request.resource.data.sizeBytes is int
+            && request.resource.data.sizeBytes > 0
+            && request.resource.data.sizeBytes < 11000000
+            && request.resource.data.folderId is string
+            && request.resource.data.folderId.size() <= 200
+            && request.resource.data.inTrash is bool
+            && request.resource.data.inTrash == false
+            && request.resource.data.uploadedBy is string
+            && request.resource.data.uploadedBy == request.auth.uid
+            && (!request.resource.data.keys().hasAny(['contentType']) || (
+              request.resource.data.contentType is string
+              && request.resource.data.contentType.size() <= 200
+            ));
+        }
+
+        function docLibraryFileIdentityStable() {
+          return request.resource.data.storagePath == resource.data.storagePath
+            && request.resource.data.downloadUrl == resource.data.downloadUrl
+            && request.resource.data.sizeBytes == resource.data.sizeBytes
+            && request.resource.data.uploadedBy == resource.data.uploadedBy;
+        }
+
+        allow read: if isCareGroupMember(careGroupId) && !isReceivesCareOnlyMember(careGroupId);
+
+        allow create: if isCareGroupMember(careGroupId)
+          && canManageDocumentLibrary(careGroupId)
+          && docLibraryFileCreateOk();
+
+        allow update: if isCareGroupMember(careGroupId)
+          && canManageDocumentLibrary(careGroupId)
+          && docLibraryFileIdentityStable()
+          && diffKeys().hasOnly(['displayName', 'folderId', 'inTrash', 'trashedAt', 'updatedAt'])
+          && (!request.resource.data.keys().hasAny(['inTrash']) || request.resource.data.inTrash is bool)
+          && (!request.resource.data.keys().hasAny(['displayName'])
+            || (request.resource.data.displayName is string
+              && request.resource.data.displayName.size() >= 1
+              && request.resource.data.displayName.size() <= 500))
+          && (!request.resource.data.keys().hasAny(['folderId'])
+            || (request.resource.data.folderId is string
+              && request.resource.data.folderId.size() <= 200))
+          && (!request.resource.data.keys().hasAny(['trashedAt'])
+            || request.resource.data.trashedAt is timestamp);
+
+        allow delete: if false;
+      }
+
+      match /galleryPhotos/{photoId} {
+        function galleryPhotoCreateOk() {
+          return request.resource.data.keys().hasAll([
+            'storagePath', 'downloadUrl', 'uploadedBy', 'uploadedAt',
+          ])
+            && request.resource.data.keys().hasOnly([
+              'storagePath', 'downloadUrl', 'uploadedBy', 'uploadedAt', 'caption',
+            ])
+            && request.resource.data.storagePath is string
+            && request.resource.data.storagePath.size() >= 1
+            && request.resource.data.storagePath.size() <= 1024
+            && request.resource.data.downloadUrl is string
+            && request.resource.data.downloadUrl.size() >= 1
+            && request.resource.data.downloadUrl.size() <= 2048
+            && request.resource.data.uploadedBy is string
+            && request.resource.data.uploadedBy == request.auth.uid
+            && request.resource.data.uploadedAt is timestamp
+            && (!request.resource.data.keys().hasAny(['caption'])
+              || (
+                request.resource.data.caption is string
+                && request.resource.data.caption.size() <= 500
+              ));
+        }
+
+        allow read: if isCareGroupMember(careGroupId)
+          && !isReceivesCareOnlyMember(careGroupId);
+
+        allow create: if isCareGroupMember(careGroupId)
+          && canManageDocumentLibrary(careGroupId)
+          && galleryPhotoCreateOk();
+
+        allow delete: if isCareGroupMember(careGroupId)
+          && (
+            resource.data.uploadedBy == request.auth.uid
+            || isPrincipalOrPoaForCareGroup(careGroupId)
+          );
+
+        allow update: if false;
       }
 
       match /documents/{documentId} {

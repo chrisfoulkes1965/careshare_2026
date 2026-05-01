@@ -3,6 +3,7 @@ import "package:equatable/equatable.dart";
 import "alternate_email.dart";
 import "alternate_phone.dart";
 import "home_sections_visibility.dart";
+import "expense_payment_details.dart";
 import "postal_address.dart";
 import "user_alert_preferences.dart";
 
@@ -42,6 +43,7 @@ final class UserProfile extends Equatable {
     this.wizardDraft,
     this.homeSections,
     this.alertPreferences,
+    this.expensePaymentDetails,
   });
 
   final String uid;
@@ -82,7 +84,13 @@ final class UserProfile extends Equatable {
   /// Optional overrides for alert delivery (email, in-app, push, SMS).
   final UserAlertPreferences? alertPreferences;
 
+  /// Where payers should send reimbursement (bank details). Required before submitting expenses.
+  final ExpensePaymentDetails? expensePaymentDetails;
+
   bool get needsWizard => !wizardCompleted && !wizardSkipped;
+
+  bool get hasCompleteExpensePaymentDetails =>
+      expensePaymentDetails?.isComplete ?? false;
 
   HomeSectionsVisibility get resolvedHomeSections =>
       homeSections ?? const HomeSectionsVisibility();
@@ -106,6 +114,7 @@ final class UserProfile extends Equatable {
     Map<String, dynamic>? wizardDraft,
     HomeSectionsVisibility? homeSections,
     UserAlertPreferences? alertPreferences,
+    ExpensePaymentDetails? expensePaymentDetails,
   }) {
     return UserProfile(
       uid: uid,
@@ -125,6 +134,8 @@ final class UserProfile extends Equatable {
       wizardDraft: wizardDraft ?? this.wizardDraft,
       homeSections: homeSections ?? this.homeSections,
       alertPreferences: alertPreferences ?? this.alertPreferences,
+      expensePaymentDetails:
+          expensePaymentDetails ?? this.expensePaymentDetails,
     );
   }
 
@@ -147,5 +158,6 @@ final class UserProfile extends Equatable {
         wizardDraft,
         homeSections,
         alertPreferences,
+        expensePaymentDetails,
       ];
 }

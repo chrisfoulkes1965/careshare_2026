@@ -9,6 +9,7 @@ import "../../care_group/models/care_group_option.dart";
 import "../models/alternate_email.dart";
 import "../models/alternate_phone.dart";
 import "../models/home_sections_visibility.dart";
+import "../models/expense_payment_details.dart";
 import "../models/postal_address.dart";
 import "../models/user_alert_preferences.dart";
 import "../models/user_profile.dart";
@@ -64,6 +65,24 @@ class UserRepository {
       String uid, Map<String, dynamic> data) async {
     if (!_firebaseReady) return;
     await _userRef(uid).update(data);
+  }
+
+  /// IANA timezone id (e.g. `Europe/London`) for server-side medication push mirrors.
+  Future<void> syncMedicationRemindersTimezone({
+    required String uid,
+    required String timezone,
+  }) async {
+    if (!_firebaseReady) {
+      return;
+    }
+    final t = timezone.trim();
+    if (t.isEmpty || t.length > 120) {
+      return;
+    }
+    await _userRef(uid).set(
+      {"medicationRemindersTimezone": t},
+      SetOptions(merge: true),
+    );
   }
 
   /// Replaces the address sub-map on `users/{uid}` (or removes it when
@@ -170,6 +189,36 @@ class UserRepository {
     await _userRef(uid).update({
       "homeSections": visibility.toFirestoreUpdate(),
     });
+  }
+
+  /// Writes `careGroups/{dataCareGroupDocId}.homepageSectionsPolicy` (administrator only).
+  Future<void> setCareGroupHomepageSectionsPolicy({
+    required String dataCareGroupDocId,
+    required HomeSectionsVisibility policy,
+  }) async {
+    if (!_firebaseReady) {
+      return;
+    }
+    await FirebaseFirestore.instance
+        .collection("careGroups")
+        .doc(dataCareGroupDocId)
+        .set(
+          {"homepageSectionsPolicy": policy.toGroupPolicyFirestoreMap()},
+          SetOptions(merge: true),
+        );
+  }
+
+  /// Removes group-wide homepage caps so members only follow their own preferences.
+  Future<void> clearCareGroupHomepageSectionsPolicy(
+    String dataCareGroupDocId,
+  ) async {
+    if (!_firebaseReady) {
+      return;
+    }
+    await FirebaseFirestore.instance
+        .collection("careGroups")
+        .doc(dataCareGroupDocId)
+        .update({"homepageSectionsPolicy": FieldValue.delete()});
   }
 
   /// One document per app install (see [installationId]). Used by Cloud Functions for FCM.
@@ -496,6 +545,18 @@ class UserRepository {
     final linked = (data["careGroupId"] as String?)?.trim();
     final resolvedDataGroupId =
         (linked != null && linked.isNotEmpty) ? linked : careGroupId;
+    Map<String, dynamic> policyHost = data;
+    if (resolvedDataGroupId != careGroupId) {
+      final policySnap = await FirebaseFirestore.instance
+          .collection("careGroups")
+          .doc(resolvedDataGroupId)
+          .get();
+      policyHost = policySnap.data() ?? {};
+    }
+    final homepagePolicy =
+        HomeSectionsVisibility.homepageGroupPolicyFromFirestore(
+      policyHost["homepageSectionsPolicy"],
+    );
     var displayName = (data["name"] as String?)?.trim() ?? "";
     if (displayName.isEmpty) {
       String? hName;
@@ -526,6 +587,7 @@ class UserRepository {
       displayName: displayName,
       roles: roles,
       themeColor: _parseThemeColorArgb(data),
+      homepageSectionsPolicy: homepagePolicy,
     );
   }
 
@@ -555,6 +617,28 @@ class UserRepository {
     }
 
     final byResolvedData = <String, CareGroupOption>{};
+    final policyHostCache = <String, Map<String, dynamic>>{};
+
+    Future<Map<String, dynamic>> policyHostFor({
+      required String resolvedDataGroupId,
+      required String careGroupDocId,
+      required Map<String, dynamic> careGroupData,
+    }) async {
+      if (resolvedDataGroupId == careGroupDocId) {
+        return careGroupData;
+      }
+      final cached = policyHostCache[resolvedDataGroupId];
+      if (cached != null) {
+        return cached;
+      }
+      final snap = await FirebaseFirestore.instance
+          .collection("careGroups")
+          .doc(resolvedDataGroupId)
+          .get();
+      final m = snap.data() ?? <String, dynamic>{};
+      policyHostCache[resolvedDataGroupId] = m;
+      return m;
+    }
 
     CareGroupOption pickPreferCanonical(
       CareGroupOption prior,
@@ -628,12 +712,22 @@ class UserRepository {
               : (fromCareGroupsHome != null && fromCareGroupsHome.isNotEmpty)
                   ? fromCareGroupsHome
                   : "Care group";
+      final policyHost = await policyHostFor(
+        resolvedDataGroupId: resolvedDataGroupId,
+        careGroupDocId: careGroupDocId,
+        careGroupData: cgData,
+      );
+      final homepagePolicy =
+          HomeSectionsVisibility.homepageGroupPolicyFromFirestore(
+        policyHost["homepageSectionsPolicy"],
+      );
       final incoming = CareGroupOption(
         careGroupId: careGroupDocId,
         dataCareGroupId: resolvedDataGroupId,
         displayName: name,
         roles: roles,
         themeColor: _parseThemeColorArgb(cgData),
+        homepageSectionsPolicy: homepagePolicy,
       );
 
       final prior = byResolvedData[resolvedDataGroupId];
@@ -698,7 +792,31 @@ class UserRepository {
           HomeSectionsVisibility.fromFirestoreMap(data["homeSections"]),
       alertPreferences:
           UserAlertPreferences.fromFirestore(data["alertPreferences"]),
+      expensePaymentDetails:
+          ExpensePaymentDetails.fromFirestore(data["expensePaymentDetails"]),
     );
+  }
+
+  /// Persists `users/{uid}.expensePaymentDetails` for reimbursements (or removes it).
+  Future<void> setExpensePaymentDetails(
+    String uid,
+    ExpensePaymentDetails? details,
+  ) async {
+    if (!_firebaseReady) {
+      return;
+    }
+    if (details == null) {
+      await _userRef(uid).update({
+        "expensePaymentDetails": FieldValue.delete(),
+      });
+      return;
+    }
+    if (!details.isComplete) {
+      throw ArgumentError("Expense payment details are incomplete.");
+    }
+    await _userRef(uid).update({
+      "expensePaymentDetails": details.toFirestore(),
+    });
   }
 
   /// Persists `users/{uid}.alertPreferences` (merge).

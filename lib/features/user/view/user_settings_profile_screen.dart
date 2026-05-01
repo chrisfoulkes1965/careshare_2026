@@ -11,6 +11,7 @@ import "../../profile/cubit/profile_cubit.dart";
 import "../../profile/cubit/profile_state.dart";
 import "../models/alternate_email.dart";
 import "../models/alternate_phone.dart";
+import "../models/expense_payment_details.dart";
 import "../models/postal_address.dart";
 import "../models/user_profile.dart";
 import "../repository/user_repository.dart";
@@ -27,6 +28,7 @@ class UserSettingsProfileScreen extends StatefulWidget {
 class _UserSettingsProfileScreenState extends State<UserSettingsProfileScreen> {
   final _identityFormKey = GlobalKey<FormState>();
   final _addressFormKey = GlobalKey<FormState>();
+  final _paymentFormKey = GlobalKey<FormState>();
 
   final _displayNameController = TextEditingController();
   final _fullNameController = TextEditingController();
@@ -39,8 +41,15 @@ class _UserSettingsProfileScreenState extends State<UserSettingsProfileScreen> {
   final _addrPostal = TextEditingController();
   final _addrCountry = TextEditingController();
 
+  final _payAccountHolder = TextEditingController();
+  final _paySortCode = TextEditingController();
+  final _payAccountNumber = TextEditingController();
+  final _payIban = TextEditingController();
+  final _payBic = TextEditingController();
+
   bool _identityBusy = false;
   bool _addressBusy = false;
+  bool _paymentBusy = false;
   bool _avatarBusy = false;
   String? _hydratedFromUid;
 
@@ -55,6 +64,11 @@ class _UserSettingsProfileScreenState extends State<UserSettingsProfileScreen> {
     _addrRegion.dispose();
     _addrPostal.dispose();
     _addrCountry.dispose();
+    _payAccountHolder.dispose();
+    _paySortCode.dispose();
+    _payAccountNumber.dispose();
+    _payIban.dispose();
+    _payBic.dispose();
     super.dispose();
   }
 
@@ -73,6 +87,134 @@ class _UserSettingsProfileScreenState extends State<UserSettingsProfileScreen> {
     _addrRegion.text = a?.region ?? "";
     _addrPostal.text = a?.postalCode ?? "";
     _addrCountry.text = a?.country ?? "";
+    final pay = p.expensePaymentDetails;
+    _payAccountHolder.text = pay?.accountHolderName ?? "";
+    _paySortCode.text = pay?.sortCode ?? "";
+    _payAccountNumber.text = pay?.accountNumber ?? "";
+    _payIban.text = pay?.iban ?? "";
+    _payBic.text = pay?.bic ?? "";
+  }
+
+  Future<void> _savePaymentDetails() async {
+    if (_paymentBusy) {
+      return;
+    }
+    if (!_paymentFormKey.currentState!.validate()) {
+      return;
+    }
+    final session = context.read<AuthBloc>().state.user;
+    if (session == null) {
+      return;
+    }
+    final userRepo = context.read<UserRepository>();
+    final profileCubit = context.read<ProfileCubit>();
+    final d = ExpensePaymentDetails(
+      accountHolderName: _payAccountHolder.text,
+      sortCode: _paySortCode.text,
+      accountNumber: _payAccountNumber.text,
+      iban: _payIban.text,
+      bic: _payBic.text,
+    );
+    if (!d.isComplete) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Enter the account holder name and either an IBAN or a UK sort code and account number.",
+          ),
+        ),
+      );
+      return;
+    }
+    setState(() => _paymentBusy = true);
+    try {
+      await userRepo.setExpensePaymentDetails(session.uid, d);
+      if (!mounted) {
+        return;
+      }
+      await profileCubit.refresh();
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Payment details saved.")),
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _paymentBusy = false);
+      }
+    }
+  }
+
+  Future<void> _clearPaymentDetails() async {
+    final session = context.read<AuthBloc>().state.user;
+    if (session == null) {
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Remove payment details?"),
+        content: const Text(
+          "You will not be able to submit new expenses until you add payment details again.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text("Cancel"),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text("Remove"),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) {
+      return;
+    }
+    setState(() => _paymentBusy = true);
+    try {
+      await context.read<UserRepository>().setExpensePaymentDetails(
+            session.uid,
+            null,
+          );
+      if (!mounted) {
+        return;
+      }
+      await context.read<ProfileCubit>().refresh();
+      if (!mounted) {
+        return;
+      }
+      _payAccountHolder.clear();
+      _paySortCode.clear();
+      _payAccountNumber.clear();
+      _payIban.clear();
+      _payBic.clear();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Payment details removed.")),
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _paymentBusy = false);
+      }
+    }
   }
 
   Future<void> _saveIdentity() async {
@@ -903,6 +1045,112 @@ class _UserSettingsProfileScreenState extends State<UserSettingsProfileScreen> {
                             : const Text("Save address"),
                       ),
                     ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 32),
+              const _SectionHeader(text: "Expense reimbursement payments"),
+              const SizedBox(height: 8),
+              Text(
+                "Used when you submit expenses so organisers know where to send reimbursement. "
+                "Provide either an IBAN or a UK sort code and account number.",
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.grey500,
+                    ),
+              ),
+              const SizedBox(height: 12),
+              Form(
+                key: _paymentFormKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextFormField(
+                      controller: _payAccountHolder,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        labelText: "Account holder name",
+                        helperText: "Must match your bank account.",
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (v) {
+                        if (v == null || v.trim().length < 2) {
+                          return "Enter the name on the account";
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      "UK bank account",
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _paySortCode,
+                      decoration: const InputDecoration(
+                        labelText: "Sort code (optional)",
+                        hintText: "e.g. 12-34-56",
+                        border: OutlineInputBorder(),
+                      ),
+                      autocorrect: false,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _payAccountNumber,
+                      decoration: const InputDecoration(
+                        labelText: "Account number (optional)",
+                        border: OutlineInputBorder(),
+                      ),
+                      keyboardType: TextInputType.text,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      "International",
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 8),
+                    TextFormField(
+                      controller: _payIban,
+                      decoration: const InputDecoration(
+                        labelText: "IBAN (optional)",
+                        border: OutlineInputBorder(),
+                      ),
+                      autocorrect: false,
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: _payBic,
+                      decoration: const InputDecoration(
+                        labelText: "BIC / SWIFT (optional)",
+                        border: OutlineInputBorder(),
+                      ),
+                      autocorrect: false,
+                    ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: FilledButton(
+                        onPressed: _paymentBusy ? null : _savePaymentDetails,
+                        child: _paymentBusy
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Text("Save payment details"),
+                      ),
+                    ),
+                    if (p.hasCompleteExpensePaymentDetails) ...[
+                      const SizedBox(height: 8),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton(
+                          onPressed:
+                              _paymentBusy ? null : () => _clearPaymentDetails(),
+                          child: const Text("Remove saved payment details"),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

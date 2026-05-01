@@ -144,6 +144,56 @@ final class ProfileCubit extends Cubit<ProfileState> {
     }
   }
 
+  /// Caps which home sections members may show (`careGroups/{dataCareGroupDocId}.homepageSectionsPolicy`).
+  Future<void> setCareGroupHomepageSectionsPolicy({
+    required String dataCareGroupDocId,
+    required HomeSectionsVisibility policy,
+  }) async {
+    final snapshot = _authSnapshotOrNull();
+    if (snapshot == null) {
+      return;
+    }
+    final previous = state;
+    try {
+      await _userRepository.setCareGroupHomepageSectionsPolicy(
+        dataCareGroupDocId: dataCareGroupDocId,
+        policy: policy,
+      );
+      await _load(snapshot);
+    } catch (e) {
+      if (previous is ProfileReady) {
+        emit(previous);
+      } else {
+        emit(ProfileError(e.toString()));
+      }
+      rethrow;
+    }
+  }
+
+  /// Removes group-wide homepage section caps.
+  Future<void> clearCareGroupHomepageSectionsPolicy(
+    String dataCareGroupDocId,
+  ) async {
+    final snapshot = _authSnapshotOrNull();
+    if (snapshot == null) {
+      return;
+    }
+    final previous = state;
+    try {
+      await _userRepository.clearCareGroupHomepageSectionsPolicy(
+        dataCareGroupDocId,
+      );
+      await _load(snapshot);
+    } catch (e) {
+      if (previous is ProfileReady) {
+        emit(previous);
+      } else {
+        emit(ProfileError(e.toString()));
+      }
+      rethrow;
+    }
+  }
+
   /// Persists which home landing sections to show (`users/{uid}.homeSections`).
   Future<void> setHomeSectionsVisibility(HomeSectionsVisibility visibility) async {
     final snapshot = _authSnapshotOrNull();

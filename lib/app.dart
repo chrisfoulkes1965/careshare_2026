@@ -11,7 +11,9 @@ import "features/auth/repository/auth_repository.dart";
 import "features/care_pathway/repository/pathways_repository.dart";
 import "features/chat/repository/chat_repository.dart";
 import "features/contacts/repository/contacts_repository.dart";
+import "features/documents/repository/documents_library_repository.dart";
 import "features/expenses/repository/expenses_repository.dart";
+import "features/gallery/repository/photo_gallery_repository.dart";
 import "features/invitations/repository/invitation_repository.dart";
 import "features/journal/repository/journal_repository.dart";
 import "features/medications/repository/medication_care_group_settings_repository.dart";
@@ -169,13 +171,19 @@ class CareShareRoot extends StatelessWidget {
         child: RepositoryProvider(
           create: (_) =>
               GroupCalendarService(firebaseReady: firebaseReady),
-          child: RepositoryProvider(
-            create: (_) => SetupRepository(firebaseReady: firebaseReady),
             child: RepositoryProvider(
-              create: (_) => TaskRepository(firebaseReady: firebaseReady),
+          create: (_) => SetupRepository(firebaseReady: firebaseReady),
+          child: RepositoryProvider(
+            create: (_) => TaskRepository(firebaseReady: firebaseReady),
+              child: RepositoryProvider(
+              create: (_) =>
+                  DocumentsLibraryRepository(firebaseReady: firebaseReady),
+              child: RepositoryProvider(
+              create: (_) =>
+                  PhotoGalleryRepository(firebaseReady: firebaseReady),
               child: RepositoryProvider(
               create: (_) => InvitationRepository(firebaseReady: firebaseReady),
-              child: RepositoryProvider(
+                child: RepositoryProvider(
                 create: (_) => JournalRepository(firebaseReady: firebaseReady),
                 child: RepositoryProvider(
                   create: (_) =>
@@ -239,6 +247,8 @@ class CareShareRoot extends StatelessWidget {
             ),
           ),
         ),
+      ),
+      ),
       ),
       ),
     );

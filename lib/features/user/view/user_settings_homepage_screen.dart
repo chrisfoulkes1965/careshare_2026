@@ -178,9 +178,14 @@ class UserSettingsHomepageScreen extends StatelessWidget {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final v = state.profile.resolvedHomeSections;
+          final pr = state;
+          final groupPolicy = pr.activeCareGroupOption?.homepageSectionsPolicy;
+          final v = pr.profile.resolvedHomeSections;
 
           final ordered = v.resolvedSectionOrder;
+
+          bool groupAllows(String id) =>
+              groupPolicy?.isSectionVisible(id) ?? true;
 
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
@@ -191,9 +196,15 @@ class UserSettingsHomepageScreen extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                "Drag the grip on the left to change vertical order on the "
-                "home screen. Turn sections off here if you prefer a calmer "
-                "layout—you can reopen features from the toolbar or menu.",
+                groupPolicy == null
+                    ? "Drag the grip on the left to change vertical order on the "
+                        "home screen. Turn sections off here if you prefer a calmer "
+                        "layout—you can reopen features from the toolbar or menu."
+                    : "Drag the grip on the left to change vertical order on the "
+                        "home screen. Turn sections off here if you prefer a calmer "
+                        "layout—you can reopen features from the toolbar or menu.\n\n"
+                        "Your care group administrator decides which sections are "
+                        "available; switches you cannot turn on have been disabled for everyone.",
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
@@ -222,7 +233,8 @@ class UserSettingsHomepageScreen extends StatelessWidget {
                 itemBuilder: (context, index) {
                   final id = ordered[index];
 
-                  final on = _visibilityFor(v, id);
+                  final allowed = groupAllows(id);
+                  final on = allowed && _visibilityFor(v, id);
 
                   return Card(
                     key: ValueKey(id),
@@ -233,12 +245,19 @@ class UserSettingsHomepageScreen extends StatelessWidget {
                         child: const Icon(Icons.drag_handle),
                       ),
                       title: Text(_title(id)),
-                      subtitle: Text(_subtitle(id)),
+                      subtitle: Text(
+                        allowed
+                            ? _subtitle(id)
+                            : "${_subtitle(id)}\n\n"
+                                "Unavailable for this care group (set by an administrator).",
+                      ),
                       trailing: Switch.adaptive(
                         value: on,
-                        onChanged: (nextOn) {
-                          _set(context, _copyVisibility(v, id, nextOn));
-                        },
+                        onChanged: allowed
+                            ? (nextOn) {
+                                _set(context, _copyVisibility(v, id, nextOn));
+                              }
+                            : null,
                       ),
                     ),
                   );

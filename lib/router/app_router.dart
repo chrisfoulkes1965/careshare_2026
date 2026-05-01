@@ -16,6 +16,8 @@ import "../features/calendar/view/calendar_screen.dart";
 import "../features/chat/view/channel_chat_screen.dart";
 import "../features/chat/view/chat_channels_screen.dart";
 import "../features/contacts/view/contacts_screen.dart";
+import "../features/documents/view/document_library_screen.dart";
+import "../features/gallery/view/photo_gallery_screen.dart";
 import "../features/expenses/view/expenses_screen.dart";
 import "../features/invitations/view/invitations_screen.dart";
 import "../features/journal/view/journal_screen.dart";
@@ -57,7 +59,9 @@ abstract final class AppRouteNames {
   static const journal = "journal";
   static const contacts = "contacts";
   static const meetings = "meetings";
+  static const documentLibrary = "documentLibrary";
   static const medications = "medications";
+  static const photoGallery = "photoGallery";
   static const selectCareGroup = "selectCareGroup";
   static const medicationDose = "medicationDose";
   static const userSettingsProfile = "userSettingsProfile";
@@ -317,9 +321,19 @@ abstract final class AppRouter {
           builder: (context, state) => const MeetingsScreen(),
         ),
         GoRoute(
+          path: "/document-library",
+          name: AppRouteNames.documentLibrary,
+          builder: (context, state) => const DocumentLibraryScreen(),
+        ),
+        GoRoute(
           path: "/medications",
           name: AppRouteNames.medications,
           builder: (context, state) => const MedicationsScreen(),
+        ),
+        GoRoute(
+          path: "/photo-gallery",
+          name: AppRouteNames.photoGallery,
+          builder: (context, state) => const PhotoGalleryScreen(),
         ),
         GoRoute(
           path: "/medication-dose",

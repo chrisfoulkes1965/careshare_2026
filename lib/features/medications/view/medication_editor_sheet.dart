@@ -7,16 +7,24 @@ import "package:flutter_bloc/flutter_bloc.dart";
 
 import "../cubit/medications_cubit.dart";
 import "../models/care_group_medication.dart";
+import "../models/medication_dose_log.dart";
+import "../repository/medications_repository.dart";
 import "../repository/rxnorm_medication_suggest_client.dart";
 
 class MedicationEditorSheet extends StatefulWidget {
-  const MedicationEditorSheet({super.key, this.existing});
+  const MedicationEditorSheet({
+    super.key,
+    this.existing,
+    required this.allowPrescriptionEdits,
+  });
 
   final CareGroupMedication? existing;
+  final bool allowPrescriptionEdits;
 
   static Future<void> show(
     BuildContext context, {
     CareGroupMedication? existing,
+    required bool allowPrescriptionEdits,
   }) {
     // Modal routes are not under the same subtree as the page [BlocProvider]; re-provide
     // so [context.read] in the sheet always works.
@@ -30,7 +38,10 @@ class MedicationEditorSheet extends StatefulWidget {
       showDragHandle: true,
       builder: (ctx) => BlocProvider<MedicationsCubit>.value(
         value: cubit,
-        child: MedicationEditorSheet(existing: existing),
+        child: MedicationEditorSheet(
+          existing: existing,
+          allowPrescriptionEdits: allowPrescriptionEdits,
+        ),
       ),
     );
   }
@@ -41,6 +52,7 @@ class MedicationEditorSheet extends StatefulWidget {
 
 class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
   final _name = TextEditingController();
+  final _form = TextEditingController();
   final _dosage = TextEditingController();
   final _quantity = TextEditingController();
   final _lowStock = TextEditingController();
@@ -60,8 +72,62 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
   int _suggestId = 0;
   bool _suggestLoading = false;
   List<String> _nameSuggestions = const [];
+  bool _nameSuggestListener = false;
 
   bool get _isEdit => widget.existing != null;
+
+  Future<void> _saveCarerQuantityOnly() async {
+    final m = widget.existing;
+    if (m == null) {
+      return;
+    }
+    if (_saving) {
+      return;
+    }
+    final cup = _quantity.text.trim();
+    if (cup.isEmpty) {
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+      return;
+    }
+    final o = int.tryParse(cup);
+    if (o == null) {
+      setState(() => _error = "Doses on hand must be a whole number.");
+      return;
+    }
+    if (o < 0) {
+      setState(() => _error = "Doses on hand cannot be negative.");
+      return;
+    }
+    if (o == m.quantityOnHand) {
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await context.read<MedicationsCubit>().patchMedicationQuantityOnly(
+            medicationId: m.id,
+            quantityOnHand: o,
+          );
+      if (mounted) {
+        setState(() => _saving = false);
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _error = e.toString();
+        });
+      }
+    }
+  }
 
   @override
   void initState() {
@@ -69,6 +135,7 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
     final m = widget.existing;
     if (m != null) {
       _name.text = m.name;
+      _form.text = m.medicationForm;
       _dosage.text = m.dosage;
       _instructions.text = m.instructions;
       _notes.text = m.notes;
@@ -90,14 +157,20 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
         _lowStock.text = "${m.lowStockThreshold}";
       }
     }
-    _name.addListener(_onNameTextChanged);
+    if (widget.allowPrescriptionEdits) {
+      _nameSuggestListener = true;
+      _name.addListener(_onNameTextChanged);
+    }
   }
 
   @override
   void dispose() {
     _suggestDebounce?.cancel();
-    _name.removeListener(_onNameTextChanged);
+    if (_nameSuggestListener) {
+      _name.removeListener(_onNameTextChanged);
+    }
     _name.dispose();
+    _form.dispose();
     _dosage.dispose();
     _quantity.dispose();
     _lowStock.dispose();
@@ -278,6 +351,10 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
 
   Future<void> _onSave() async {
     if (_saving) return;
+    if (_isEdit && !widget.allowPrescriptionEdits) {
+      await _saveCarerQuantityOnly();
+      return;
+    }
     if (_name.text.trim().isEmpty) {
       setState(() => _error = "Add a medication name (e.g. as on your label).");
       return;
@@ -303,6 +380,10 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
         setState(() => _error = "Low-stock threshold cannot be negative.");
         return;
       }
+    }
+    if (_form.text.trim().length > 200) {
+      setState(() => _error = "Form description is too long (max 200 characters).");
+      return;
     }
     if (_reminderEnabled) {
       if (_times.isEmpty) {
@@ -341,6 +422,7 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
         await cubit.updateMedication(
           medicationId: widget.existing!.id,
           name: _name.text,
+          medicationForm: _form.text,
           dosage: _dosage.text,
           instructions: _instructions.text,
           notes: _notes.text,
@@ -359,6 +441,7 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
       } else {
         await cubit.addMedication(
           name: _name.text,
+          medicationForm: _form.text,
           dosage: _dosage.text,
           instructions: _instructions.text,
           notes: _notes.text,
@@ -390,6 +473,7 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
   Widget build(BuildContext context) {
     final viewInsets = MediaQuery.viewInsetsOf(context);
     final m = widget.existing;
+    final ro = _isEdit && !widget.allowPrescriptionEdits;
     return SafeArea(
       top: false,
       left: true,
@@ -404,10 +488,22 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
           shrinkWrap: true,
           children: [
           Text(
-            _isEdit ? "Edit medication" : "Add medication",
+            ro
+                ? "Stock count"
+                : _isEdit
+                    ? "Edit medication"
+                    : "Add medication",
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 8),
+          if (ro)
+            Text(
+              "Prescription details are locked to principal carers and POA. You can update doses on hand only.",
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+            ),
+          if (ro) const SizedBox(height: 8),
           if (kIsWeb)
             Text(
               "Local reminders to take medicine require the iOS, Android, or desktop app. You can still save prescriptions here on web.",
@@ -416,18 +512,19 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
           const SizedBox(height: 8),
           TextField(
             controller: _name,
+            readOnly: ro,
             decoration: const InputDecoration(
               labelText: "Name (as on pack or label)",
               hintText: "Type to search a public name list (RxNorm)",
             ),
             textInputAction: TextInputAction.next,
-            autofocus: !_isEdit,
+            autofocus: !_isEdit && !ro,
           ),
-          if (_suggestLoading) ...[
+          if (!ro && _suggestLoading) ...[
             const SizedBox(height: 8),
             const LinearProgressIndicator(minHeight: 2),
           ],
-          if (_nameSuggestions.isNotEmpty) ...[
+          if (!ro && _nameSuggestions.isNotEmpty) ...[
             const SizedBox(height: 4),
             Text(
               "U.S. RxNorm (NIH) — for reference; always match your own packaging.",
@@ -458,7 +555,18 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
           ],
           const SizedBox(height: 10),
           TextField(
+            controller: _form,
+            readOnly: ro,
+            decoration: const InputDecoration(
+              labelText: "Form (optional)",
+              hintText: "e.g. tablet, liquid, patch",
+            ),
+            textInputAction: TextInputAction.next,
+          ),
+          const SizedBox(height: 10),
+          TextField(
             controller: _dosage,
+            readOnly: ro,
             decoration: const InputDecoration(
               labelText: "Dose (optional)",
               hintText: "e.g. 500mg, 2 tablets",
@@ -469,25 +577,34 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
           TextField(
             controller: _quantity,
             keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: "Doses on hand (optional)",
-              hintText: "Tablets/capsules left; leave empty for 28-day estimate",
+            decoration: InputDecoration(
+              labelText: ro ? "Doses on hand" : "Doses on hand (optional)",
+              hintText: ro
+                  ? "Enter count"
+                  : "Tablets/capsules left; leave empty for 28-day estimate",
             ),
             textInputAction: TextInputAction.next,
           ),
           const SizedBox(height: 10),
-          TextField(
-            controller: _lowStock,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: "Low-stock threshold (optional)",
-              hintText: "Alert when on-hand count is at or below this (needs doses on hand set)",
+          if (ro && m != null && m!.lowStockThreshold != null)
+            Text(
+              "Low-stock alert at or below ${m!.lowStockThreshold} doses (set by organiser).",
+              style: Theme.of(context).textTheme.bodySmall,
+            )
+          else if (!ro)
+            TextField(
+              controller: _lowStock,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: "Low-stock threshold (optional)",
+                hintText: "Alert when on-hand count is at or below this (needs doses on hand set)",
+              ),
+              textInputAction: TextInputAction.next,
             ),
-            textInputAction: TextInputAction.next,
-          ),
           const SizedBox(height: 10),
           TextField(
             controller: _instructions,
+            readOnly: ro,
             decoration: const InputDecoration(
               labelText: "How to take (optional)",
               hintText: "e.g. with food, before bed",
@@ -498,6 +615,7 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
           const SizedBox(height: 10),
           TextField(
             controller: _notes,
+            readOnly: ro,
             decoration: const InputDecoration(labelText: "Notes (optional)"),
             minLines: 1,
             maxLines: 3,
@@ -505,11 +623,11 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
           const SizedBox(height: 8),
           SwitchListTile(
             value: _reminderEnabled,
-            onChanged: (v) => setState(() => _reminderEnabled = v),
+            onChanged: ro ? null : (v) => setState(() => _reminderEnabled = v),
             title: const Text("Remind me to take this"),
             subtitle: const Text("Local notification on this device; schedule below"),
           ),
-          if (_reminderEnabled) ...[
+          if (!ro && _reminderEnabled) ...[
             const Text("Repeat"),
             const SizedBox(height: 4),
             SegmentedButton<MedicationScheduleType>(
@@ -632,6 +750,49 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
               ],
             ),
           ],
+          if (ro && m != null && m!.reminderEnabled) ...[
+            const SizedBox(height: 8),
+            Text(m!.scheduleSummaryLine, style: Theme.of(context).textTheme.bodySmall),
+            if (m!.hasValidReminderSchedule && m!.reminderTimes.isNotEmpty)
+              Text(m!.inventorySummaryLine, style: Theme.of(context).textTheme.labelSmall),
+          ],
+          if (m != null) ...[
+            const SizedBox(height: 16),
+            Text("Recent dose logs", style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 4),
+            StreamBuilder<List<MedicationDoseLogEntry>>(
+              stream: context.read<MedicationsRepository>().watchRecentDoseLogs(
+                    careGroupId: context.read<MedicationsCubit>().careGroupId,
+                    medicationId: m!.id,
+                  ),
+              builder: (context, snap) {
+                final logs = snap.data ?? const [];
+                if (logs.isEmpty) {
+                  return Text(
+                    "No confirmations recorded yet.",
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                  );
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (final e in logs)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text(
+                          e.takenAt != null
+                              ? "${e.takenAt!.toLocal().toIso8601String().replaceFirst("T", " ").split(".").first}"
+                              : "—",
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
+          ],
           const SizedBox(height: 12),
           if (_isEdit && m?.photoUrl != null && m!.photoUrl!.isNotEmpty && !_clearPhoto)
             Column(
@@ -646,24 +807,25 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
                     errorBuilder: (_, __, ___) => const Icon(Icons.broken_image_outlined),
                   ),
                 ),
-                CheckboxListTile(
-                  value: _clearPhoto,
-                  onChanged: _saving
-                      ? null
-                      : (v) {
-                          setState(() {
-                            _clearPhoto = v ?? false;
-                            if (_clearPhoto) {
-                              _newImage = null;
-                            }
-                          });
-                        },
-                  controlAffinity: ListTileControlAffinity.leading,
-                  title: const Text("Remove photo"),
-                ),
+                if (!ro)
+                  CheckboxListTile(
+                    value: _clearPhoto,
+                    onChanged: _saving
+                        ? null
+                        : (v) {
+                            setState(() {
+                              _clearPhoto = v ?? false;
+                              if (_clearPhoto) {
+                                _newImage = null;
+                              }
+                            });
+                          },
+                    controlAffinity: ListTileControlAffinity.leading,
+                    title: const Text("Remove photo"),
+                  ),
               ],
             )
-          else if (_newImage != null)
+          else if (!ro && _newImage != null)
             ListTile(
               leading: const Icon(Icons.image_outlined),
               title: Text(_newImage!.name, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -672,11 +834,12 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
                 icon: const Icon(Icons.close),
               ),
             ),
-          OutlinedButton.icon(
-            onPressed: _saving ? null : _pickImage,
-            icon: const Icon(Icons.camera_alt_outlined),
-            label: Text(_isEdit ? "Change prescription photo" : "Add prescription photo (optional)"),
-          ),
+          if (!ro)
+            OutlinedButton.icon(
+              onPressed: _saving ? null : _pickImage,
+              icon: const Icon(Icons.camera_alt_outlined),
+              label: Text(_isEdit ? "Change prescription photo" : "Add prescription photo (optional)"),
+            ),
           if (_error != null) ...[
             const SizedBox(height: 8),
             Text(
@@ -693,7 +856,7 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
                     height: 22,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : Text(_isEdit ? "Save" : "Add medication"),
+                : Text(ro ? "Update stock count" : _isEdit ? "Save" : "Add medication"),
           ),
         ],
         ),

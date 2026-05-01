@@ -17,6 +17,7 @@ final class CareGroupMedication {
   const CareGroupMedication({
     required this.id,
     required this.name,
+    this.medicationForm = "",
     this.dosage = "",
     this.instructions = "",
     this.notes = "",
@@ -32,6 +33,9 @@ final class CareGroupMedication {
 
   final String id;
   final String name;
+
+  /// e.g. tablet, liquid, injection — from packaging (optional).
+  final String medicationForm;
   final String dosage;
   final String instructions;
   final String notes;
@@ -93,6 +97,7 @@ final class CareGroupMedication {
     return CareGroupMedication(
       id: id,
       name: (data["name"] as String?)?.trim() ?? "",
+      medicationForm: (data["medicationForm"] as String?)?.trim() ?? "",
       dosage: (data["dosage"] as String?)?.trim() ?? "",
       instructions: (data["instructions"] as String?)?.trim() ?? "",
       notes: (data["notes"] as String?)?.trim() ?? "",

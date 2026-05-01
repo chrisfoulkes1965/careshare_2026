@@ -367,6 +367,213 @@ exports.onCareInvitationResendEmail = onDocumentUpdated(
   }
 );
 
+/**
+ * @param {{to: string, subject: string, textBody: string, htmlBody: string}} opts
+ * @return {Promise<void>}
+ */
+async function sendTransactionalResendEmail(opts) {
+  const to = (opts.to || "").trim().toLowerCase();
+  const apiKey = (resendApiKey.value() || "").trim();
+  const from = (resendFromEmail.value() || "").trim();
+  const fromName = (resendFromName.value() || "CareShare").trim() || "CareShare";
+  if (!to || !apiKey || !from) {
+    console.warn("sendTransactionalResendEmail: skipped (missing to, API key, or from)");
+    return;
+  }
+  const fromResend = fromName
+    ? String(fromName).replace(/[\r\n<>]/g, " ").trim() + " <" + from + ">"
+    : from;
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from: fromResend,
+      to: [to],
+      subject: opts.subject,
+      text: opts.textBody,
+      html: opts.htmlBody,
+    }),
+  });
+  if (res.status < 200 || res.status >= 300) {
+    const t = await res.text();
+    throw new Error("Resend HTTP " + res.status + ": " + t);
+  }
+}
+
+/**
+ * When an expense moves to **rejected**, email the submitter with the reason.
+ */
+exports.onCareGroupExpenseRejectedEmail = onDocumentUpdated(
+  {
+    document: "careGroups/{careGroupId}/expenses/{expenseId}",
+    region: "us-central1",
+  },
+  async (event) => {
+    const be = event.data.before;
+    const af = event.data.after;
+    if (!af.exists) {
+      return;
+    }
+    const b = be.exists ? (be.data() || {}) : {};
+    const a = af.data() || {};
+    const beforeS = b.expenseStatus != null ? String(b.expenseStatus) : "approved";
+    const afterS = a.expenseStatus != null ? String(a.expenseStatus) : "approved";
+    if (beforeS === "rejected" || afterS !== "rejected") {
+      return;
+    }
+    const payeeUid = a.createdBy != null ? String(a.createdBy) : "";
+    if (!payeeUid) {
+      return;
+    }
+    let email = "";
+    try {
+      const u = await db.doc("users/" + payeeUid).get();
+      if (u.exists) {
+        const em = u.get("email");
+        if (em != null) {
+          email = String(em).trim().toLowerCase();
+        }
+      }
+    } catch (e) {
+      console.error("onCareGroupExpenseRejectedEmail: user read failed", e);
+    }
+    if (!email) {
+      console.warn("onCareGroupExpenseRejectedEmail: no email for uid", payeeUid);
+      return;
+    }
+    const title = a.title != null ? String(a.title) : "Expense";
+    const cur = a.currency != null ? String(a.currency) : "GBP";
+    const amt = a.amount != null ? Number(a.amount) : 0;
+    const reason = a.rejectionReason != null ? String(a.rejectionReason) : "";
+    const {careGroupId} = event.params;
+    let groupName = "your care team";
+    try {
+      const g = await db.doc("careGroups/" + careGroupId).get();
+      if (g.exists) {
+        const gd = g.data() || {};
+        const n = (gd.name && String(gd.name).trim()) ||
+          (gd.displayName && String(gd.displayName).trim()) || "";
+        if (n) {
+          groupName = n;
+        }
+      }
+    } catch (_) {
+      // ignore
+    }
+    const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const subj = "CareShare · Expense not approved · " + groupName;
+    const textBody =
+      "An expense you submitted was not approved for \"" + groupName + "\" in CareShare.\n\n" +
+      "Expense: " + title + "\n" +
+      "Amount: " + cur + " " + String(amt) + "\n\n" +
+      "Reason:\n" + reason + "\n\n" +
+      "Open the CareShare app to review or submit an updated claim if appropriate.\n\n" +
+      "— CareShare";
+    const htmlBody =
+      "<p>An expense you submitted was <strong>not approved</strong> for <strong>" + esc(groupName) +
+      "</strong> in CareShare.</p>" +
+      "<p><strong>" + esc(title) + "</strong> · " + esc(cur) + " " + esc(String(amt)) + "</p>" +
+      "<p><strong>Reason</strong></p><p style=\"white-space:pre-wrap;\">" + esc(reason) + "</p>" +
+      "<p style=\"color:#666;font-size:12px;\">Open the CareShare app for details.</p>";
+    try {
+      await sendTransactionalResendEmail({
+        to: email,
+        subject: subj,
+        textBody: textBody,
+        htmlBody: htmlBody,
+      });
+    } catch (e) {
+      console.error("onCareGroupExpenseRejectedEmail: send failed", String((e && e.message) || e));
+    }
+  }
+);
+
+/**
+ * One email per payment batch ([expensePaymentClaims]) listing total and titles preview.
+ */
+exports.onExpensePaymentClaimCreatedEmail = onDocumentCreated(
+  {
+    document: "careGroups/{careGroupId}/expensePaymentClaims/{claimId}",
+    region: "us-central1",
+  },
+  async (event) => {
+    const snap = event.data;
+    if (!snap) {
+      return;
+    }
+    const d = snap.data() || {};
+    const payeeUid = d.payeeUid != null ? String(d.payeeUid) : "";
+    if (!payeeUid) {
+      return;
+    }
+    let email = "";
+    try {
+      const u = await db.doc("users/" + payeeUid).get();
+      if (u.exists) {
+        const em = u.get("email");
+        if (em != null) {
+          email = String(em).trim().toLowerCase();
+        }
+      }
+    } catch (e) {
+      console.error("onExpensePaymentClaimCreatedEmail: user read failed", e);
+    }
+    if (!email) {
+      console.warn("onExpensePaymentClaimCreatedEmail: no email for uid", payeeUid);
+      return;
+    }
+    const cur = d.currency != null ? String(d.currency) : "";
+    const total = d.totalAmount != null ? Number(d.totalAmount) : 0;
+    const ids = Array.isArray(d.expenseIds) ? d.expenseIds : [];
+    const n = ids.length;
+    const preview = d.expenseTitlePreview != null ? String(d.expenseTitlePreview) : "";
+    const claimId = String(event.params.claimId || "");
+    const {careGroupId} = event.params;
+    let groupName = "your care team";
+    try {
+      const g = await db.doc("careGroups/" + careGroupId).get();
+      if (g.exists) {
+        const gd = g.data() || {};
+        const gn = (gd.name && String(gd.name).trim()) ||
+          (gd.displayName && String(gd.displayName).trim()) || "";
+        if (gn) {
+          groupName = gn;
+        }
+      }
+    } catch (_) {
+      // ignore
+    }
+    const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const subj = "CareShare · Expenses paid · " + groupName;
+    const textBody =
+      String(n) + " expense(s) you submitted for \"" + groupName + "\" have been marked as paid in CareShare.\n\n" +
+      "Total: " + cur + " " + String(total) + "\n" +
+      "Claim reference: " + claimId + "\n\n" +
+      (preview ? "Items (preview): " + preview + "\n\n" : "") +
+      "— CareShare";
+    const htmlBody =
+      "<p><strong>" + esc(String(n)) + " expense(s)</strong> you submitted for <strong>" + esc(groupName) +
+      "</strong> have been marked as <strong>paid</strong> in CareShare.</p>" +
+      "<p>Total: <strong>" + esc(cur) + " " + esc(String(total)) + "</strong></p>" +
+      "<p>Claim reference: <code>" + esc(claimId) + "</code></p>" +
+      (preview ? "<p style=\"font-size:13px;color:#444;\">" + esc(preview) + "</p>" : "") +
+      "<p style=\"color:#666;font-size:12px;\">Open the CareShare app for full details.</p>";
+    try {
+      await sendTransactionalResendEmail({
+        to: email,
+        subject: subj,
+        textBody: textBody,
+        htmlBody: htmlBody,
+      });
+    } catch (e) {
+      console.error("onExpensePaymentClaimCreatedEmail: send failed", String((e && e.message) || e));
+    }
+  }
+);
+
 const {syncToGoogleCalendar} = require("./gcal/syncToGoogleCalendar");
 const {syncInboundGoogleCalendar} = require("./gcal/syncInboundGoogleCalendar");
 exports.syncToGoogleCalendar = syncToGoogleCalendar;

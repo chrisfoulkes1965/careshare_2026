@@ -117,6 +117,32 @@ final class ExpensesCubit extends Cubit<ExpensesState> {
     );
   }
 
+  Future<void> approveExpense(String expenseId) {
+    return _repository.approveExpense(
+      careGroupId: careGroupId,
+      expenseId: expenseId,
+    );
+  }
+
+  Future<void> rejectExpense({
+    required String expenseId,
+    required String rejectionReason,
+  }) {
+    return _repository.rejectExpense(
+      careGroupId: careGroupId,
+      expenseId: expenseId,
+      rejectionReason: rejectionReason,
+    );
+  }
+
+  /// Returns the payment claim id used for this batch.
+  Future<String> markExpensesPaid(List<String> expenseIds) {
+    return _repository.markExpensesPaid(
+      careGroupId: careGroupId,
+      expenseIds: expenseIds,
+    );
+  }
+
   @override
   Future<void> close() async {
     await _sub?.cancel();

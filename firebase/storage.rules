@@ -49,6 +49,23 @@ service firebase.storage {
       allow delete: if isMemberOfCareGroupFromStorage(careGroupId);
     }
 
+    // Document library — bytes kept when items are in Trash; app never hard-deletes.
+    match /careGroups/{careGroupId}/doc_library/{fileId}/{fileName} {
+      allow read: if isMemberOfCareGroupFromStorage(careGroupId);
+      allow create, update: if isMemberOfCareGroupFromStorage(careGroupId)
+        && request.resource.size < 10 * 1024 * 1024;
+      allow delete: if false;
+    }
+
+    // Shared photo gallery — careGroups/{careGroupId}/gallery/{photoId}/{fileName}
+    match /careGroups/{careGroupId}/gallery/{photoId}/{fileName} {
+      allow read: if isMemberOfCareGroupFromStorage(careGroupId);
+      allow create, update: if isMemberOfCareGroupFromStorage(careGroupId)
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches("image/.*");
+      allow delete: if isMemberOfCareGroupFromStorage(careGroupId);
+    }
+
     // Profile photos: users/{uid}/profile_photo/{fileName}
     match /users/{userId}/profile_photo/{fileName} {
       allow read: if request.auth != null;

@@ -5,7 +5,8 @@ import "package:file_picker/file_picker.dart";
 import "package:firebase_auth/firebase_auth.dart";
 import "package:firebase_storage/firebase_storage.dart";
 
-import "../models/care_group_expense.dart";
+import "../models/care_group_expense.dart"
+    show CareGroupExpense, ExpenseClaimStatus;
 import "platform_file_read_io.dart" if (dart.library.html) "platform_file_read_web.dart" as platform_file_read;
 
 class ExpensesRepository {
@@ -25,6 +26,17 @@ class ExpensesRepository {
         .collection("careGroups")
         .doc(careGroupId)
         .collection("expenses");
+  }
+
+  DocumentReference<Map<String, dynamic>> _expensePaymentClaimDoc(
+    String careGroupId,
+    String claimId,
+  ) {
+    return FirebaseFirestore.instance
+        .collection("careGroups")
+        .doc(careGroupId)
+        .collection("expensePaymentClaims")
+        .doc(claimId);
   }
 
   String _safeFileName(String name) {
@@ -91,6 +103,7 @@ class ExpensesRepository {
       "spentAt": Timestamp.fromDate(spentAt),
       "createdBy": uid,
       "createdAt": FieldValue.serverTimestamp(),
+      "expenseStatus": "submitted",
     };
     final cat = category?.trim();
     if (cat != null && cat.isNotEmpty) {
@@ -260,5 +273,159 @@ class ExpensesRepository {
       await _tryDeleteStorageFile(url);
     }
     await _expenses(careGroupId).doc(expenseId).delete();
+  }
+
+  Future<void> approveExpense({
+    required String careGroupId,
+    required String expenseId,
+  }) async {
+    if (!_firebaseReady) {
+      return;
+    }
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      throw StateError("Not signed in.");
+    }
+    final ts = Timestamp.now();
+    await _expenses(careGroupId).doc(expenseId).update({
+      "expenseStatus": ExpenseClaimStatus.approved,
+      "reviewedAt": ts,
+      "reviewedBy": uid,
+      "rejectionReason": FieldValue.delete(),
+      "updatedAt": FieldValue.serverTimestamp(),
+    }).timeout(
+      _writeTimeout,
+      onTimeout: () => throw TimeoutException(
+        "Could not approve expense.",
+        _writeTimeout,
+      ),
+    );
+  }
+
+  Future<void> rejectExpense({
+    required String careGroupId,
+    required String expenseId,
+    required String rejectionReason,
+  }) async {
+    if (!_firebaseReady) {
+      return;
+    }
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      throw StateError("Not signed in.");
+    }
+    final reason = rejectionReason.trim();
+    if (reason.isEmpty) {
+      throw ArgumentError("A rejection reason is required.");
+    }
+    final ts = Timestamp.now();
+    await _expenses(careGroupId).doc(expenseId).update({
+      "expenseStatus": ExpenseClaimStatus.rejected,
+      "rejectionReason": reason.length > 2000 ? reason.substring(0, 2000) : reason,
+      "reviewedAt": ts,
+      "reviewedBy": uid,
+      "updatedAt": FieldValue.serverTimestamp(),
+    }).timeout(
+      _writeTimeout,
+      onTimeout: () => throw TimeoutException(
+        "Could not reject expense.",
+        _writeTimeout,
+      ),
+    );
+  }
+
+  /// Marks several **approved** expenses as paid in one claim; creates [expensePaymentClaims] doc for email.
+  /// All selected expenses must share the same [createdBy] (payee) and currency.
+  Future<String> markExpensesPaid({
+    required String careGroupId,
+    required List<String> expenseIds,
+  }) async {
+    if (!_firebaseReady) {
+      return "";
+    }
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      throw StateError("Not signed in.");
+    }
+    if (expenseIds.isEmpty) {
+      throw ArgumentError("Select at least one expense.");
+    }
+    final uniqueIds = expenseIds.toSet().toList();
+    final expenses = <CareGroupExpense>[];
+    for (final id in uniqueIds) {
+      final snap = await _expenses(careGroupId).doc(id).get();
+      if (!snap.exists || snap.data() == null) {
+        throw StateError("Expense not found: $id");
+      }
+      expenses.add(CareGroupExpense.fromDoc(id, snap.data()!));
+    }
+    String? payeeUid;
+    String? currency;
+    var total = 0.0;
+    final titles = <String>[];
+    for (final e in expenses) {
+      if (e.expenseStatus != ExpenseClaimStatus.approved) {
+        throw StateError(
+          "Only approved expenses can be paid (${e.title}).",
+        );
+      }
+      payeeUid ??= e.createdBy;
+      if (e.createdBy != payeeUid) {
+        throw ArgumentError(
+          "Selected expenses must belong to the same member (same submitter).",
+        );
+      }
+      currency ??= e.currency;
+      if (e.currency != currency) {
+        throw ArgumentError(
+          "Selected expenses must use the same currency.",
+        );
+      }
+      total += e.amount;
+      titles.add(e.title);
+    }
+    if (payeeUid == null || payeeUid.isEmpty) {
+      throw StateError("Missing submitter on expense.");
+    }
+    final paymentClaimId =
+        "pay_${DateTime.now().millisecondsSinceEpoch}_${uid.hashCode.abs()}";
+    final safeClaimId = paymentClaimId.length > 128
+        ? paymentClaimId.substring(0, 128)
+        : paymentClaimId;
+    var preview = titles.take(25).join("; ");
+    if (titles.length > 25) {
+      preview = "$preview; …";
+    }
+    if (preview.length > 2000) {
+      preview = preview.substring(0, 2000);
+    }
+    final ts = Timestamp.now();
+    final batch = FirebaseFirestore.instance.batch();
+    batch.set(_expensePaymentClaimDoc(careGroupId, safeClaimId), {
+      "payeeUid": payeeUid,
+      "expenseIds": uniqueIds,
+      "currency": currency,
+      "totalAmount": total,
+      "paidBy": uid,
+      "paidAt": ts,
+      "expenseTitlePreview": preview,
+    });
+    for (final e in expenses) {
+      batch.update(_expenses(careGroupId).doc(e.id), {
+        "expenseStatus": ExpenseClaimStatus.paid,
+        "paidAt": ts,
+        "paidBy": uid,
+        "paymentClaimId": safeClaimId,
+        "updatedAt": FieldValue.serverTimestamp(),
+      });
+    }
+    await batch.commit().timeout(
+      _writeTimeout,
+      onTimeout: () => throw TimeoutException(
+        "Could not record payment.",
+        _writeTimeout,
+      ),
+    );
+    return safeClaimId;
   }
 }

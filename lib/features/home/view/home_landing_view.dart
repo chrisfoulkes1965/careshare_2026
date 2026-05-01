@@ -7,6 +7,7 @@ import "package:go_router/go_router.dart";
 import "package:url_launcher/url_launcher.dart";
 
 import "../../../core/care/role_label.dart";
+import "../../../core/formatting/currency_format.dart";
 import "../../../core/theme/app_assets.dart";
 import "../../../core/theme/app_colors.dart";
 import "../../../core/theme/care_group_header_theme.dart";
@@ -455,6 +456,9 @@ DateTime? _nextMedicationReminderSortTime(CareGroupMedication m) {
 
   final now = DateTime.now();
   final exCandidates = expenses.where((e) {
+    if (e.isRejected) {
+      return false;
+    }
     final sp = e.spentAt;
     final futureOrToday = sp.isAfter(now.subtract(const Duration(seconds: 30)));
     final last14 = now.subtract(const Duration(days: 14));
@@ -950,7 +954,10 @@ class HomeLandingView extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(18, 0, 18, 0),
                   child: _HomeConfigurableLandingSections(
-                    homeSections: profile.resolvedHomeSections,
+                    homeSections: profile.resolvedHomeSections
+                        .intersectGroupHomepagePolicy(
+                      pr.activeCareGroupOption?.homepageSectionsPolicy,
+                    ),
                     memberListCareGroupId: memberDocId,
                     dataCareGroupId: dataId,
                     membersRepository: context.read<MembersRepository>(),
@@ -986,36 +993,66 @@ void _openAddMenu(BuildContext context) {
     context: context,
     showDragHandle: true,
     builder: (ctx) {
+      void go(String route) {
+        Navigator.of(ctx).pop();
+        context.push(route);
+      }
+
       return SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                "Add to your care team",
+        child: ListView(
+          shrinkWrap: true,
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 20),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+              child: Text(
+                "What would you like to add?",
                 style: Theme.of(ctx).textTheme.titleMedium,
               ),
-              const SizedBox(height: 8),
-              ListTile(
-                leading: const Icon(Icons.task_alt_outlined),
-                title: const Text("New task"),
-                onTap: () {
-                  Navigator.of(ctx).pop();
-                  context.push("/tasks");
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.note_alt_outlined),
-                title: const Text("Add to notes"),
-                onTap: () {
-                  Navigator.of(ctx).pop();
-                  context.push("/notes");
-                },
-              ),
-            ],
-          ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.task_alt_outlined),
+              title: const Text("Task"),
+              subtitle: const Text("Shared to-do for your care group"),
+              onTap: () => go("/tasks"),
+            ),
+            ListTile(
+              leading: const Icon(Icons.note_alt_outlined),
+              title: const Text("Note"),
+              subtitle: const Text("Care notes and updates"),
+              onTap: () => go("/notes"),
+            ),
+            ListTile(
+              leading: const Icon(Icons.folder_open_outlined),
+              title: const Text("Document"),
+              subtitle: const Text("Upload to the document library"),
+              onTap: () => go("/document-library"),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text("Photo"),
+              subtitle: const Text("Add to the shared photo gallery"),
+              onTap: () => go("/photo-gallery"),
+            ),
+            ListTile(
+              leading: const Icon(Icons.payments_outlined),
+              title: const Text("Expense"),
+              subtitle: const Text("Log spending for reimbursement"),
+              onTap: () => go("/expenses"),
+            ),
+            ListTile(
+              leading: const Icon(Icons.menu_book_outlined),
+              title: const Text("Journal entry"),
+              subtitle: const Text("Day-to-day care journal"),
+              onTap: () => go("/journal"),
+            ),
+            ListTile(
+              leading: const Icon(Icons.medication_outlined),
+              title: const Text("Medication"),
+              subtitle: const Text("Prescriptions and reminders"),
+              onTap: () => go("/medications"),
+            ),
+          ],
         ),
       );
     },
@@ -1297,10 +1334,12 @@ const _kCareTeamTools = <(IconData, String, String)>[
   (Icons.route_outlined, "Pathways", "/pathways"),
   (Icons.mail_outline, "Invites", "/invitations"),
   (Icons.note_alt_outlined, "Notes", "/notes"),
+  (Icons.photo_library_outlined, "Photos", "/photo-gallery"),
   (Icons.menu_book_outlined, "Journal", "/journal"),
   (Icons.contact_phone_outlined, "Contacts", "/contacts"),
   (Icons.payments_outlined, "Expenses", "/expenses"),
   (Icons.groups_2_outlined, "Meetings", "/meetings"),
+  (Icons.folder_open_outlined, "Documents", "/document-library"),
   (Icons.forum_outlined, "Chat", "/chat"),
 ];
 
@@ -1840,9 +1879,8 @@ class _UpcomingCompactCard extends StatelessWidget {
         kindLabel = "Expense";
         accent = const Color(0xFFC2185B);
         title = ex.title.isEmpty ? "Expense" : ex.title;
-        final cur = ex.currency;
         subtitle =
-            "$cur ${ex.amount.toStringAsFixed(ex.amount == ex.amount.roundToDouble() ? 0 : 2)} · ${_formatTaskDueLine(ex.spentAt)}";
+            "${formatCurrencyAmount(ex.amount, ex.currency)} · ${_formatTaskDueLine(ex.spentAt)}";
         avatarUid = ex.createdBy.isNotEmpty ? ex.createdBy : null;
         break;
     }
@@ -2575,7 +2613,7 @@ class _AddCta extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(
-                "Add a task or note",
+                "Add task, note, photo…",
                 style: TextStyle(
                   color: on,
                   fontSize: 13,

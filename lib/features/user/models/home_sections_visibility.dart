@@ -34,6 +34,9 @@ abstract final class HomeSectionId {
 
 /// Controls which blocks appear on the care group home landing page and in what order.
 /// Stored under `users/{uid}.homeSections` in Firestore. Omitted bool keys mean “show”.
+///
+/// Group-wide caps live under `careGroups/{dataDocId}.homepageSectionsPolicy` (administrator
+/// only). When absent, every section is allowed at the group level.
 final class HomeSectionsVisibility extends Equatable {
   const HomeSectionsVisibility({
     this.todaysNeeds = true,
@@ -170,6 +173,47 @@ final class HomeSectionsVisibility extends Equatable {
       _kRecentActivity: recentActivity,
       _kSectionOrder: resolvedSectionOrder,
     };
+  }
+
+  /// Flags only (no order) for `careGroups.homepageSectionsPolicy`.
+  Map<String, dynamic> toGroupPolicyFirestoreMap() {
+    return {
+      _kTodaysNeeds: todaysNeeds,
+      _kCalendarEvents: calendarEvents,
+      _kTasks: tasks,
+      _kMedications: medications,
+      _kExpenses: expenses,
+      _kUrgentTasks: urgentTasks,
+      _kRecentActivity: recentActivity,
+    };
+  }
+
+  /// Caps each section to visible only when both the member and [groupPolicy] allow it.
+  /// Null [groupPolicy] means the group does not restrict sections.
+  HomeSectionsVisibility intersectGroupHomepagePolicy(
+    HomeSectionsVisibility? groupPolicy,
+  ) {
+    if (groupPolicy == null) {
+      return this;
+    }
+    return HomeSectionsVisibility(
+      todaysNeeds: todaysNeeds && groupPolicy.todaysNeeds,
+      calendarEvents: calendarEvents && groupPolicy.calendarEvents,
+      tasks: tasks && groupPolicy.tasks,
+      medications: medications && groupPolicy.medications,
+      expenses: expenses && groupPolicy.expenses,
+      urgentTasks: urgentTasks && groupPolicy.urgentTasks,
+      recentActivity: recentActivity && groupPolicy.recentActivity,
+      sectionOrder: sectionOrder,
+    );
+  }
+
+  /// Null when the field is absent or empty — treated as “no group restriction”.
+  static HomeSectionsVisibility? homepageGroupPolicyFromFirestore(Object? raw) {
+    if (raw == null || raw is! Map || raw.isEmpty) {
+      return null;
+    }
+    return HomeSectionsVisibility.fromFirestoreMap(raw);
   }
 
   HomeSectionsVisibility copyWith({

@@ -11,6 +11,7 @@ import "widgets/care_group_calendar_setup_section.dart";
 import "widgets/care_group_members_invites_section.dart";
 import "widgets/care_group_theme_picker_sheet.dart";
 import "../../settings/view/widgets/calendar_subscription_tile.dart";
+import "../models/home_sections_visibility.dart";
 
 /// Settings for the user’s [ProfileReady.profile.activeCareGroupId]: name, theme, setup wizard, members.
 void _careGroupSettingsPopOrHome(BuildContext context) {
@@ -63,18 +64,21 @@ class CareGroupSettingsScreen extends StatelessWidget {
           body: ListView(
             padding: const EdgeInsets.all(20),
             children: [
+              const _SectionHeader(text: "Name & theme"),
+              const SizedBox(height: 8),
               _CareGroupSettingsForm(option: opt),
+              const SizedBox(height: 32),
+              const _SectionHeader(text: "Homepage"),
+              const SizedBox(height: 8),
+              _CareGroupHomepageSectionsCard(option: opt),
               if (state.profile.wizardCompleted) ...[
-                const SizedBox(height: 16),
+                const SizedBox(height: 32),
+                const _SectionHeader(text: "Setup wizard"),
+                const SizedBox(height: 8),
                 _SectionCard(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(
-                        "Setup wizard",
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                      const SizedBox(height: 4),
                       Text(
                         "Re-run the guided setup. If you finish it, a new care group and home may be created — use this only when you mean to.",
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -116,21 +120,15 @@ class CareGroupSettingsScreen extends StatelessWidget {
                   ),
                 ),
               ],
-              const SizedBox(height: 16),
+              const SizedBox(height: 32),
+              const _SectionHeader(text: "People & invites"),
+              const SizedBox(height: 8),
               _SectionCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      "People & invites",
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                    const SizedBox(height: 8),
-                    CareGroupMembersInvitesSection(option: opt),
-                  ],
-                ),
+                child: CareGroupMembersInvitesSection(option: opt),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 32),
+              const _SectionHeader(text: "Care groups"),
+              const SizedBox(height: 8),
               _SectionCard(
                 child: ListTile(
                   contentPadding: EdgeInsets.zero,
@@ -145,7 +143,9 @@ class CareGroupSettingsScreen extends StatelessWidget {
                   },
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 32),
+              const _SectionHeader(text: "Calendar"),
+              const SizedBox(height: 8),
               _SectionCard(
                 child: CareGroupCalendarSetupSection(option: opt),
               ),
@@ -153,8 +153,10 @@ class CareGroupSettingsScreen extends StatelessWidget {
               const _SectionCard(
                 child: CalendarSubscriptionTile(),
               ),
-              const SizedBox(height: 12),
-              _ActiveIdsForSupportCard(
+              const SizedBox(height: 32),
+              const _SectionHeader(text: "Active IDs"),
+              const SizedBox(height: 8),
+              _ActiveIdsForSupportBody(
                 activeCareGroupId: state.profile.activeCareGroupId,
               ),
             ],
@@ -207,24 +209,21 @@ class _CareGroupSettingsFormState extends State<_CareGroupSettingsForm> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            "You can name this care team, set the theme colour for home, and review people and invitations. "
-            "Only a care group administrator can change the name, theme colour, and linked calendar settings.",
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            "Name this care team and set the theme colour for home. "
+            "Only a care group administrator can change the name, theme colour, linked calendar settings, "
+            "and which homepage sections are available to the team.",
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
           ),
-          const SizedBox(height: 20),
-          Text(
-            "Care group name",
-            style: Theme.of(context).textTheme.titleSmall,
-          ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 16),
           TextField(
             controller: _name,
             readOnly: !canEditAppearance,
             textCapitalization: TextCapitalization.sentences,
             decoration: InputDecoration(
               border: const OutlineInputBorder(),
+              labelText: "Care group name",
               hintText: "Name shown in the app",
               enabled: canEditAppearance,
               suffixIcon: canEditAppearance && _saving
@@ -368,6 +367,194 @@ class _CareGroupSettingsFormState extends State<_CareGroupSettingsForm> {
   }
 }
 
+class _CareGroupHomepageSectionsCard extends StatelessWidget {
+  const _CareGroupHomepageSectionsCard({required this.option});
+
+  final CareGroupOption option;
+
+  Future<void> _apply(
+    BuildContext context,
+    HomeSectionsVisibility next,
+  ) async {
+    try {
+      await context.read<ProfileCubit>().setCareGroupHomepageSectionsPolicy(
+            dataCareGroupDocId: option.dataCareGroupId,
+            policy: next,
+          );
+    } catch (e) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString())),
+      );
+    }
+  }
+
+  bool _visibilityFor(HomeSectionsVisibility v, String id) {
+    switch (id) {
+      case HomeSectionId.todaysNeeds:
+        return v.todaysNeeds;
+      case HomeSectionId.calendarEvents:
+        return v.calendarEvents;
+      case HomeSectionId.tasks:
+        return v.tasks;
+      case HomeSectionId.medications:
+        return v.medications;
+      case HomeSectionId.expenses:
+        return v.expenses;
+      case HomeSectionId.urgentTasks:
+        return v.urgentTasks;
+      case HomeSectionId.recentActivity:
+        return v.recentActivity;
+      default:
+        return true;
+    }
+  }
+
+  HomeSectionsVisibility _copyVisibility(
+    HomeSectionsVisibility v,
+    String id,
+    bool on,
+  ) {
+    switch (id) {
+      case HomeSectionId.todaysNeeds:
+        return v.copyWith(todaysNeeds: on);
+      case HomeSectionId.calendarEvents:
+        return v.copyWith(calendarEvents: on);
+      case HomeSectionId.tasks:
+        return v.copyWith(tasks: on);
+      case HomeSectionId.medications:
+        return v.copyWith(medications: on);
+      case HomeSectionId.expenses:
+        return v.copyWith(expenses: on);
+      case HomeSectionId.urgentTasks:
+        return v.copyWith(urgentTasks: on);
+      case HomeSectionId.recentActivity:
+        return v.copyWith(recentActivity: on);
+      default:
+        return v;
+    }
+  }
+
+  String _subtitle(String id) {
+    switch (id) {
+      case HomeSectionId.todaysNeeds:
+        return "Members marked as receiving care and their short needs";
+      case HomeSectionId.calendarEvents:
+        return "Team meetings and linked Google Calendar events";
+      case HomeSectionId.tasks:
+        return "Upcoming tasks that have a due date";
+      case HomeSectionId.medications:
+        return "Medicine reminder preview";
+      case HomeSectionId.expenses:
+        return "Recent or upcoming expense entries";
+      case HomeSectionId.urgentTasks:
+        return "Prioritized open tasks";
+      case HomeSectionId.recentActivity:
+        return "Notes, journal and task updates";
+      default:
+        return "";
+    }
+  }
+
+  String _title(String id) {
+    switch (id) {
+      case HomeSectionId.todaysNeeds:
+        return "Today's needs";
+      case HomeSectionId.calendarEvents:
+        return "Calendar events";
+      case HomeSectionId.tasks:
+        return "Tasks";
+      case HomeSectionId.medications:
+        return "Medications";
+      case HomeSectionId.expenses:
+        return "Expenses";
+      case HomeSectionId.urgentTasks:
+        return "Urgent tasks";
+      case HomeSectionId.recentActivity:
+        return "Recent activity";
+      default:
+        return id;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canEdit = option.canEditCareGroupNameThemeAndCalendar;
+    return BlocBuilder<ProfileCubit, ProfileState>(
+      builder: (context, state) {
+        var o = option;
+        if (state is ProfileReady) {
+          for (final x in state.careGroupOptions) {
+            if (x.careGroupId == option.careGroupId) {
+              o = x;
+              break;
+            }
+          }
+        }
+        final policy =
+            o.homepageSectionsPolicy ?? const HomeSectionsVisibility();
+        final ordered = HomeSectionId.canonicalOrder;
+
+        return _SectionCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                canEdit
+                    ? "Turn sections off to hide them from everyone’s home for this care group. "
+                        "Members can still personalize order and which allowed sections they see."
+                    : "Only a care group administrator can choose which sections are available on home. "
+                        "You can still hide allowed sections for yourself under Account → Homepage sections.",
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              if (canEdit) ...[
+                const SizedBox(height: 12),
+                for (final id in ordered) ...[
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(_title(id)),
+                    subtitle: Text(_subtitle(id)),
+                    value: _visibilityFor(policy, id),
+                    onChanged: (on) => _apply(context, _copyVisibility(policy, id, on)),
+                  ),
+                ],
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: () async {
+                    try {
+                      await context
+                          .read<ProfileCubit>()
+                          .clearCareGroupHomepageSectionsPolicy(
+                            o.dataCareGroupId,
+                          );
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            "All homepage sections are allowed again for this group.",
+                          ),
+                        ),
+                      );
+                    } catch (e) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(e.toString())),
+                      );
+                    }
+                  },
+                  child: const Text("Allow all sections (reset group default)"),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _NoActiveGroupBody extends StatelessWidget {
   const _NoActiveGroupBody({required this.hasCareGroups});
 
@@ -436,8 +623,8 @@ class _NoActiveGroupBody extends StatelessWidget {
   }
 }
 
-class _ActiveIdsForSupportCard extends StatelessWidget {
-  const _ActiveIdsForSupportCard({required this.activeCareGroupId});
+class _ActiveIdsForSupportBody extends StatelessWidget {
+  const _ActiveIdsForSupportBody({required this.activeCareGroupId});
 
   final String? activeCareGroupId;
 
@@ -454,24 +641,23 @@ class _ActiveIdsForSupportCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              "Active IDs (for support / debugging)",
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
-            const SizedBox(height: 8),
-            _IdRow(
-              label: "Care group",
-              value: activeCareGroupId,
-              onCopy: () => _copyId(context),
-            ),
-          ],
-        ),
+    return _SectionCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "For support or debugging — copy the id if asked.",
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(height: 12),
+          _IdRow(
+            label: "Care group",
+            value: activeCareGroupId,
+            onCopy: () => _copyId(context),
+          ),
+        ],
       ),
     );
   }
@@ -532,6 +718,20 @@ class _SectionCard extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
         child: child,
       ),
+    );
+  }
+}
+
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text,
+      style: Theme.of(context).textTheme.titleSmall,
     );
   }
 }

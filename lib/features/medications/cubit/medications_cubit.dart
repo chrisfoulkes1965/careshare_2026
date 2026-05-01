@@ -1,9 +1,13 @@
 import "dart:async";
 
 import "package:file_picker/file_picker.dart";
+import "package:firebase_auth/firebase_auth.dart";
+import "package:flutter/foundation.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
+import "package:flutter_timezone/flutter_timezone.dart";
 
 import "../../../core/medication_reminders/medication_notification_service.dart";
+import "../../user/repository/user_repository.dart";
 import "../models/care_group_medication.dart";
 import "../models/medication_care_group_settings.dart";
 import "../repository/medication_care_group_settings_repository.dart";
@@ -14,13 +18,16 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
   MedicationsCubit({
     required MedicationsRepository repository,
     required MedicationCareGroupSettingsRepository settingsRepository,
+    required UserRepository userRepository,
     required this.careGroupId,
   })  : _repository = repository,
         _settingsRepository = settingsRepository,
+        _userRepository = userRepository,
         super(const MedicationsInitial());
 
   final MedicationsRepository _repository;
   final MedicationCareGroupSettingsRepository _settingsRepository;
+  final UserRepository _userRepository;
   final String careGroupId;
 
   StreamSubscription<List<CareGroupMedication>>? _sub;
@@ -65,10 +72,30 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
       },
       onError: (Object e) => emit(MedicationsFailure(e.toString())),
     );
+    unawaited(_syncMedicationReminderTimezoneOnce());
+  }
+
+  Future<void> _syncMedicationReminderTimezoneOnce() async {
+    if (kIsWeb || !_userRepository.isAvailable) {
+      return;
+    }
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      return;
+    }
+    try {
+      final zone = await FlutterTimezone.getLocalTimezone();
+      final id = zone.identifier.trim();
+      if (id.isEmpty) {
+        return;
+      }
+      await _userRepository.syncMedicationRemindersTimezone(uid: uid, timezone: id);
+    } catch (_) {}
   }
 
   Future<void> addMedication({
     required String name,
+    String medicationForm = "",
     String dosage = "",
     String instructions = "",
     String notes = "",
@@ -85,6 +112,7 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
     return _repository.addMedication(
       careGroupId: careGroupId,
       name: name,
+      medicationForm: medicationForm,
       dosage: dosage,
       instructions: instructions,
       notes: notes,
@@ -103,6 +131,7 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
   Future<void> updateMedication({
     required String medicationId,
     required String name,
+    String medicationForm = "",
     String dosage = "",
     String instructions = "",
     String notes = "",
@@ -123,6 +152,7 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
       careGroupId: careGroupId,
       medicationId: medicationId,
       name: name,
+      medicationForm: medicationForm,
       dosage: dosage,
       instructions: instructions,
       notes: notes,
@@ -138,6 +168,17 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
       clearPhoto: clearPhoto,
       newImage: newImage,
       alsoApplyPhotoToMedicationIds: alsoApplyPhotoToMedicationIds,
+    );
+  }
+
+  Future<void> patchMedicationQuantityOnly({
+    required String medicationId,
+    required int quantityOnHand,
+  }) {
+    return _repository.patchMedicationQuantityOnly(
+      careGroupId: careGroupId,
+      medicationId: medicationId,
+      quantityOnHand: quantityOnHand,
     );
   }
 

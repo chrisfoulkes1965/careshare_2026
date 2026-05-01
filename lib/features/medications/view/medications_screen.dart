@@ -5,6 +5,7 @@ import "package:go_router/go_router.dart";
 import "../cubit/medications_state.dart";
 import "../../profile/cubit/profile_cubit.dart";
 import "../../profile/cubit/profile_state.dart";
+import "../../user/repository/user_repository.dart";
 import "../cubit/medications_cubit.dart";
 import "../logic/medication_reorder.dart";
 import "../models/care_group_medication.dart";
@@ -48,6 +49,7 @@ class MedicationsScreen extends StatelessWidget {
           create: (context) => MedicationsCubit(
             repository: context.read<MedicationsRepository>(),
             settingsRepository: context.read<MedicationCareGroupSettingsRepository>(),
+            userRepository: context.read<UserRepository>(),
             careGroupId: cg,
           )..subscribe(),
           child: _MedicationsView(careGroupId: cg),
@@ -82,8 +84,13 @@ class _MedicationsViewState extends State<_MedicationsView> {
       },
       builder: (context, state) {
         final cg = widget.careGroupId;
+        final profileState = context.watch<ProfileCubit>().state;
+        final canConfigMeds = profileState is ProfileReady &&
+            (profileState.activeCareGroupOption?.canConfigureMedicationPrescriptions ?? false);
+        final canEditMedSettings = profileState is ProfileReady &&
+            (profileState.activeCareGroupOption?.canEditMedicationGroupSettings ?? false);
         if (cg == null || cg.isEmpty) {
-          return _scaffoldForState(context, state, null);
+          return _scaffoldForState(context, state, null, canConfigMeds, canEditMedSettings);
         }
         return StreamBuilder<MedicationInventoryCareGroupSettings>(
           stream: context.read<MedicationCareGroupSettingsRepository>().watchSettings(cg),
@@ -92,7 +99,7 @@ class _MedicationsViewState extends State<_MedicationsView> {
             if (state is MedicationsDisplay) {
               _maybeShowReorderDialog(context, state.list, st);
             }
-            return _scaffoldForState(context, state, cg);
+            return _scaffoldForState(context, state, cg, canConfigMeds, canEditMedSettings);
           },
         );
       },
@@ -150,7 +157,7 @@ class _MedicationsViewState extends State<_MedicationsView> {
               "${batch.map((e) {
                 final d = e.estimatedDaysOfSupply;
                 final ds = d == null ? "?" : "${d.toStringAsFixed(1)} d left";
-                return "? ${e.name} ? $ds";
+                return "• ${e.name} — $ds";
               }).join("\n")}",
             ),
           ),
@@ -172,6 +179,8 @@ class _MedicationsViewState extends State<_MedicationsView> {
     BuildContext context,
     MedicationsState state,
     String? careGroupId,
+    bool canConfigureMedications,
+    bool canEditMedicationGroupSettings,
   ) {
     return Scaffold(
       appBar: AppBar(
@@ -206,7 +215,9 @@ class _MedicationsViewState extends State<_MedicationsView> {
               ),
             ),
           ],
-          if (careGroupId != null && careGroupId.isNotEmpty)
+          if (careGroupId != null &&
+              careGroupId.isNotEmpty &&
+              canEditMedicationGroupSettings)
             IconButton(
               icon: const Icon(Icons.inventory_2_outlined),
               tooltip: "Inventory & reorder settings",
@@ -215,11 +226,15 @@ class _MedicationsViewState extends State<_MedicationsView> {
         ],
       ),
       body: SafeArea(
-        child: _Body(state: state),
+        child: _Body(state: state, canConfigureMedications: canConfigureMedications),
       ),
-      floatingActionButton: (state is MedicationsEmpty || state is MedicationsDisplay)
+      floatingActionButton: canConfigureMedications &&
+              (state is MedicationsEmpty || state is MedicationsDisplay)
           ? FloatingActionButton(
-              onPressed: () => MedicationEditorSheet.show(context),
+              onPressed: () => MedicationEditorSheet.show(
+                context,
+                allowPrescriptionEdits: true,
+              ),
               child: const Icon(Icons.add),
             )
           : null,
@@ -228,9 +243,13 @@ class _MedicationsViewState extends State<_MedicationsView> {
 }
 
 class _Body extends StatelessWidget {
-  const _Body({required this.state});
+  const _Body({
+    required this.state,
+    required this.canConfigureMedications,
+  });
 
   final MedicationsState state;
+  final bool canConfigureMedications;
 
   @override
   Widget build(BuildContext context) {
@@ -265,7 +284,10 @@ class _Body extends StatelessWidget {
           itemCount: list.length,
           separatorBuilder: (_, __) => const SizedBox(height: 8),
           itemBuilder: (context, i) {
-            return _MedCard(m: list[i]);
+            return _MedCard(
+              m: list[i],
+              canConfigureMedications: canConfigureMedications,
+            );
           },
         ),
     };
@@ -273,9 +295,13 @@ class _Body extends StatelessWidget {
 }
 
 class _MedCard extends StatelessWidget {
-  const _MedCard({required this.m});
+  const _MedCard({
+    required this.m,
+    required this.canConfigureMedications,
+  });
 
   final CareGroupMedication m;
+  final bool canConfigureMedications;
 
   @override
   Widget build(BuildContext context) {
@@ -283,12 +309,17 @@ class _MedCard extends StatelessWidget {
       child: ListTile(
         isThreeLine: m.instructions.isNotEmpty || m.notes.isNotEmpty || m.reminderEnabled,
         onTap: () {
-          MedicationEditorSheet.show(context, existing: m);
+          MedicationEditorSheet.show(
+            context,
+            existing: m,
+            allowPrescriptionEdits: canConfigureMedications,
+          );
         },
         title: Text(m.name, style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (m.medicationForm.isNotEmpty) Text(m.medicationForm),
             if (m.dosage.isNotEmpty) Text(m.dosage),
             if (m.reminderEnabled) ...[
               const SizedBox(height: 4),
@@ -320,32 +351,34 @@ class _MedCard extends StatelessWidget {
             if (m.photoUrl != null && m.photoUrl!.isNotEmpty) const Text("Has photo", style: TextStyle(fontSize: 12)),
           ],
         ),
-        trailing: IconButton(
-          icon: const Icon(Icons.delete_outline),
-          tooltip: "Delete",
-          onPressed: () async {
-            final go = await showDialog<bool>(
-              context: context,
-              builder: (ctx) => AlertDialog(
-                title: const Text("Delete medication?"),
-                content: const Text("Reminders for this item will be rescheduled for your other medications."),
-                actions: [
-                  TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text("Cancel")),
-                  FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text("Delete")),
-                ],
-              ),
-            );
-            if (go == true && context.mounted) {
-              try {
-                await context.read<MedicationsCubit>().deleteMedication(m.id);
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
-                }
-              }
-            }
-          },
-        ),
+        trailing: canConfigureMedications
+            ? IconButton(
+                icon: const Icon(Icons.delete_outline),
+                tooltip: "Delete",
+                onPressed: () async {
+                  final go = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text("Delete medication?"),
+                      content: const Text("Reminders for this item will be rescheduled for your other medications."),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text("Cancel")),
+                        FilledButton(onPressed: () => Navigator.of(ctx).pop(true), child: const Text("Delete")),
+                      ],
+                    ),
+                  );
+                  if (go == true && context.mounted) {
+                    try {
+                      await context.read<MedicationsCubit>().deleteMedication(m.id);
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+                      }
+                    }
+                  }
+                },
+              )
+            : null,
       ),
     );
   }
