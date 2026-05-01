@@ -322,7 +322,12 @@ final class SetupWizardBloc extends Bloc<SetupWizardEvent, SetupWizardState> {
       await _profileCubit.refresh();
       emit(state.copyWith(isSubmitting: false));
     } catch (e) {
-      emit(state.copyWith(isSubmitting: false, errorMessage: e.toString()));
+      final raw = e.toString();
+      final friendly = raw.contains("permission-denied") || raw.contains("PERMISSION_DENIED")
+          ? "Could not save your care group (Firestore permission denied). "
+              "Deploy the latest firebase/firestore.rules to your project, then try again."
+          : raw;
+      emit(state.copyWith(isSubmitting: false, errorMessage: friendly));
     }
   }
 

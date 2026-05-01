@@ -79,11 +79,13 @@ class SetupRepository {
 
     final recipientIds = submit.recipients.map((r) => r.id).toList();
 
-    // One [careGroups] document: care team, home/address, recipients, and [members/].
-    // Rules allow principal to create [members] for self in the same batch.
-    final batch = firestore.batch();
+    // Commit the team + self membership first. Subcollection creates (chat channel)
+    // require [isCareGroupMember] / [isCarerOrPrincipalForCareGroup]; those rules read
+    // `members/{uid}` and are evaluated reliably only after that doc is committed —
+    // a single batch can still yield `permission-denied` on web for the channel write.
+    final teamBatch = firestore.batch();
 
-    batch.set(groupRef, {
+    teamBatch.set(groupRef, {
       "name": submit.careGroupName.trim(),
       "description": submit.careGroupDescription.trim(),
       "recipientIds": recipientIds,
@@ -95,14 +97,18 @@ class SetupRepository {
       "createdAt": now,
     });
 
-    batch.set(groupRef.collection("members").doc(uid), {
+    teamBatch.set(groupRef.collection("members").doc(uid), {
       "roles": ["care_group_administrator", "principal_carer"],
       "displayName": submit.principalDisplayName.trim(),
       "joinedAt": now,
       "kudosScore": 0,
     });
 
-    batch.set(
+    await teamBatch.commit();
+
+    final followUp = firestore.batch();
+
+    followUp.set(
       groupRef
           .collection("chatChannels")
           .doc(ChatRepository.defaultGeneralChannelId),
@@ -116,9 +122,6 @@ class SetupRepository {
       },
     );
 
-    await batch.commit();
-
-    final followUp = firestore.batch();
     for (final email in _normaliseEmails(submit.inviteEmails)) {
       final invRef = firestore.collection("invitations").doc();
       followUp.set(invRef, {

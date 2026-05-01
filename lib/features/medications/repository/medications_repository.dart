@@ -306,6 +306,7 @@ class MedicationsRepository {
 
   Future<void> addMedication({
     required String careGroupId,
+    required String careRecipientId,
     required String name,
     String medicationForm = "",
     String dosage = "",
@@ -326,6 +327,7 @@ class MedicationsRepository {
     }
     return _withOpTimeout(_addMedicationWork(
       careGroupId: careGroupId,
+      careRecipientId: careRecipientId,
       name: name,
       medicationForm: medicationForm,
       dosage: dosage,
@@ -345,6 +347,7 @@ class MedicationsRepository {
 
   Future<void> _addMedicationWork({
     required String careGroupId,
+    required String careRecipientId,
     required String name,
     String medicationForm = "",
     String dosage = "",
@@ -364,11 +367,16 @@ class MedicationsRepository {
     if (uid == null) {
       throw StateError("Not signed in.");
     }
+    final cr = careRecipientId.trim();
+    if (cr.isEmpty) {
+      throw ArgumentError("Choose who this medication is for.");
+    }
     final t = name.trim();
     if (t.isEmpty) {
       throw ArgumentError("Medication name is required.");
     }
     final data = <String, dynamic>{
+      "careRecipientId": cr.length > 128 ? cr.substring(0, 128) : cr,
       "name": t,
       "medicationForm": medicationForm.trim(),
       "dosage": dosage.trim(),
@@ -420,6 +428,7 @@ class MedicationsRepository {
   Future<void> updateMedication({
     required String careGroupId,
     required String medicationId,
+    required String careRecipientId,
     required String name,
     String medicationForm = "",
     String dosage = "",
@@ -444,6 +453,7 @@ class MedicationsRepository {
     return _withOpTimeout(_updateMedicationWork(
       careGroupId: careGroupId,
       medicationId: medicationId,
+      careRecipientId: careRecipientId,
       name: name,
       medicationForm: medicationForm,
       dosage: dosage,
@@ -467,6 +477,7 @@ class MedicationsRepository {
   Future<void> _updateMedicationWork({
     required String careGroupId,
     required String medicationId,
+    required String careRecipientId,
     required String name,
     String medicationForm = "",
     String dosage = "",
@@ -485,11 +496,16 @@ class MedicationsRepository {
     PlatformFile? newImage,
     List<String> alsoApplyPhotoToMedicationIds = const [],
   }) async {
+    final cr = careRecipientId.trim();
+    if (cr.isEmpty) {
+      throw ArgumentError("Choose who this medication is for.");
+    }
     final t = name.trim();
     if (t.isEmpty) {
       throw ArgumentError("Medication name is required.");
     }
     final patch = <String, dynamic>{
+      "careRecipientId": cr.length > 128 ? cr.substring(0, 128) : cr,
       "name": t,
       "medicationForm": medicationForm.trim(),
       "dosage": dosage.trim(),

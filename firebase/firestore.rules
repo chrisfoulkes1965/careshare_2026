@@ -237,7 +237,7 @@ service cloud.firestore {
 
     function medicationPrincipalPatchKeys() {
       return [
-        'name', 'medicationForm', 'dosage', 'instructions', 'notes', 'photoUrl',
+        'name', 'careRecipientId', 'medicationForm', 'dosage', 'instructions', 'notes', 'photoUrl',
         'reminderEnabled', 'reminderTimes', 'reminderSchedule', 'reminderWeekdays', 'reminderMonthDays',
         'quantityOnHand', 'lowStockThreshold',
       ];
@@ -286,6 +286,11 @@ service cloud.firestore {
           request.resource.data.lowStockThreshold is int
           && request.resource.data.lowStockThreshold >= 0
           && request.resource.data.lowStockThreshold < 2000000000
+        ))
+        && (!request.resource.data.keys().hasAny(['careRecipientId']) || (
+          request.resource.data.careRecipientId is string
+          && request.resource.data.careRecipientId.size() >= 1
+          && request.resource.data.careRecipientId.size() <= 128
         ));
     }
 
@@ -305,7 +310,7 @@ service cloud.firestore {
 
     function medicationCreateKeysOk() {
       return request.resource.data.keys().hasOnly([
-        'name', 'medicationForm', 'dosage', 'instructions', 'notes', 'photoUrl',
+        'name', 'careRecipientId', 'medicationForm', 'dosage', 'instructions', 'notes', 'photoUrl',
         'reminderEnabled', 'reminderTimes', 'reminderSchedule', 'reminderWeekdays', 'reminderMonthDays',
         'quantityOnHand', 'lowStockThreshold', 'createdBy', 'createdAt',
       ]);
@@ -616,8 +621,11 @@ service cloud.firestore {
 
         allow create: if isPrincipalOrPoaForCareGroup(careGroupId)
           && medicationCreateKeysOk()
-          && request.resource.data.keys().hasAll(['name', 'createdBy', 'createdAt'])
+          && request.resource.data.keys().hasAll(['name', 'careRecipientId', 'createdBy', 'createdAt'])
           && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.careRecipientId is string
+          && request.resource.data.careRecipientId.size() >= 1
+          && request.resource.data.careRecipientId.size() <= 128
           && request.resource.data.name is string
           && request.resource.data.name.size() >= 1
           && request.resource.data.name.size() <= 200

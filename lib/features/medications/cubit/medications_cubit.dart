@@ -119,6 +119,7 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
   }
 
   Future<void> addMedication({
+    required String careRecipientId,
     required String name,
     String medicationForm = "",
     String dosage = "",
@@ -136,6 +137,7 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
   }) {
     return _repository.addMedication(
       careGroupId: careGroupId,
+      careRecipientId: careRecipientId,
       name: name,
       medicationForm: medicationForm,
       dosage: dosage,
@@ -155,6 +157,7 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
 
   Future<void> updateMedication({
     required String medicationId,
+    required String careRecipientId,
     required String name,
     String medicationForm = "",
     String dosage = "",
@@ -176,6 +179,7 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
     return _repository.updateMedication(
       careGroupId: careGroupId,
       medicationId: medicationId,
+      careRecipientId: careRecipientId,
       name: name,
       medicationForm: medicationForm,
       dosage: dosage,

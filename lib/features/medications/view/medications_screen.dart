@@ -3,6 +3,8 @@ import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
 
 import "../cubit/medications_state.dart";
+import "../../members/models/care_group_member.dart";
+import "../../members/repository/members_repository.dart";
 import "../../profile/cubit/profile_cubit.dart";
 import "../../profile/cubit/profile_state.dart";
 import "../../user/repository/user_repository.dart";
@@ -16,6 +18,36 @@ import "medication_editor_sheet.dart";
 import "medication_inventory_settings_sheet.dart";
 import "medication_batch_prep_sheet.dart";
 import "medication_stock_take_sheet.dart";
+
+List<CareGroupMember> _medicationsCareRecipients(List<CareGroupMember> roster) {
+  return roster.where((m) => m.roles.contains("receives_care")).toList();
+}
+
+String _careRecipientSectionLabel(String? careRecipientId, List<CareGroupMember> recipients) {
+  if (careRecipientId == null || careRecipientId.isEmpty) {
+    return "No care recipient assigned";
+  }
+  for (final m in recipients) {
+    if (m.userId == careRecipientId) {
+      return m.displayName;
+    }
+  }
+  return "Care recipient";
+}
+
+List<CareGroupMedication> _medicationsSortedForDisplay(List<CareGroupMedication> list) {
+  final out = [...list];
+  out.sort((a, b) {
+    final ka = a.careRecipientId ?? "";
+    final kb = b.careRecipientId ?? "";
+    final c = ka.compareTo(kb);
+    if (c != 0) {
+      return c;
+    }
+    return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+  });
+  return out;
+}
 
 class MedicationsScreen extends StatelessWidget {
   const MedicationsScreen({super.key});
@@ -90,16 +122,40 @@ class _MedicationsViewState extends State<_MedicationsView> {
         final canEditMedSettings = profileState is ProfileReady &&
             (profileState.activeCareGroupOption?.canEditMedicationGroupSettings ?? false);
         if (cg == null || cg.isEmpty) {
-          return _scaffoldForState(context, state, null, canConfigMeds, canEditMedSettings);
+          return _scaffoldForState(
+            context,
+            state,
+            null,
+            canConfigMeds,
+            canEditMedSettings,
+            const [],
+          );
         }
-        return StreamBuilder<MedicationInventoryCareGroupSettings>(
-          stream: context.read<MedicationCareGroupSettingsRepository>().watchSettings(cg),
-          builder: (context, settingsSnap) {
-            final st = settingsSnap.data ?? const MedicationInventoryCareGroupSettings();
-            if (state is MedicationsDisplay) {
-              _maybeShowReorderDialog(context, state.list, st);
-            }
-            return _scaffoldForState(context, state, cg, canConfigMeds, canEditMedSettings);
+        final membersCg = profileState is ProfileReady
+            ? (profileState.activeCareGroupMemberDocId ?? cg)
+            : cg;
+        final dataCg = profileState is ProfileReady ? profileState.activeCareGroupDataId : null;
+        return StreamBuilder<List<CareGroupMember>>(
+          stream: context.read<MembersRepository>().watchMembersOrRoster(membersCg, dataCg),
+          builder: (context, rosterSnap) {
+            final careRecipients = _medicationsCareRecipients(rosterSnap.data ?? const []);
+            return StreamBuilder<MedicationInventoryCareGroupSettings>(
+              stream: context.read<MedicationCareGroupSettingsRepository>().watchSettings(cg),
+              builder: (context, settingsSnap) {
+                final st = settingsSnap.data ?? const MedicationInventoryCareGroupSettings();
+                if (state is MedicationsDisplay) {
+                  _maybeShowReorderDialog(context, state.list, st);
+                }
+                return _scaffoldForState(
+                  context,
+                  state,
+                  cg,
+                  canConfigMeds,
+                  canEditMedSettings,
+                  careRecipients,
+                );
+              },
+            );
           },
         );
       },
@@ -181,6 +237,7 @@ class _MedicationsViewState extends State<_MedicationsView> {
     String? careGroupId,
     bool canConfigureMedications,
     bool canEditMedicationGroupSettings,
+    List<CareGroupMember> careRecipients,
   ) {
     return Scaffold(
       appBar: AppBar(
@@ -226,7 +283,11 @@ class _MedicationsViewState extends State<_MedicationsView> {
         ],
       ),
       body: SafeArea(
-        child: _Body(state: state, canConfigureMedications: canConfigureMedications),
+        child: _Body(
+          state: state,
+          canConfigureMedications: canConfigureMedications,
+          careRecipients: careRecipients,
+        ),
       ),
       floatingActionButton: canConfigureMedications &&
               (state is MedicationsEmpty || state is MedicationsDisplay)
@@ -234,6 +295,7 @@ class _MedicationsViewState extends State<_MedicationsView> {
               onPressed: () => MedicationEditorSheet.show(
                 context,
                 allowPrescriptionEdits: true,
+                careRecipients: careRecipients,
               ),
               child: const Icon(Icons.add),
             )
@@ -246,10 +308,12 @@ class _Body extends StatelessWidget {
   const _Body({
     required this.state,
     required this.canConfigureMedications,
+    required this.careRecipients,
   });
 
   final MedicationsState state;
   final bool canConfigureMedications;
+  final List<CareGroupMember> careRecipients;
 
   @override
   Widget build(BuildContext context) {
@@ -279,29 +343,70 @@ class _Body extends StatelessWidget {
             ),
           ],
         ),
-      MedicationsDisplay(:final list) => ListView.separated(
-          padding: const EdgeInsets.all(16),
-          itemCount: list.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 8),
-          itemBuilder: (context, i) {
-            return _MedCard(
-              m: list[i],
-              canConfigureMedications: canConfigureMedications,
-            );
-          },
+      MedicationsDisplay(:final list) => _medicationsGroupedListView(
+          context,
+          list,
+          canConfigureMedications,
+          careRecipients,
         ),
     };
   }
+}
+
+Widget _medicationsGroupedListView(
+  BuildContext context,
+  List<CareGroupMedication> list,
+  bool canConfigureMedications,
+  List<CareGroupMember> careRecipients,
+) {
+  final sorted = _medicationsSortedForDisplay(list);
+  final children = <Widget>[];
+  String? lastRecipientKey;
+  for (final m in sorted) {
+    final key = m.careRecipientId ?? "";
+    if (key != lastRecipientKey) {
+      lastRecipientKey = key;
+      final missing = m.careRecipientId == null || m.careRecipientId!.isEmpty;
+      children.add(
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
+          child: Text(
+            _careRecipientSectionLabel(m.careRecipientId, careRecipients),
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  color: missing ? Theme.of(context).colorScheme.error : null,
+                ),
+          ),
+        ),
+      );
+    }
+    children.add(
+      _MedCard(
+        m: m,
+        canConfigureMedications: canConfigureMedications,
+        careRecipients: careRecipients,
+      ),
+    );
+    children.add(const SizedBox(height: 8));
+  }
+  if (children.isNotEmpty) {
+    children.removeLast();
+  }
+  return ListView(
+    padding: const EdgeInsets.all(16),
+    children: children,
+  );
 }
 
 class _MedCard extends StatelessWidget {
   const _MedCard({
     required this.m,
     required this.canConfigureMedications,
+    required this.careRecipients,
   });
 
   final CareGroupMedication m;
   final bool canConfigureMedications;
+  final List<CareGroupMember> careRecipients;
 
   @override
   Widget build(BuildContext context) {
@@ -313,6 +418,7 @@ class _MedCard extends StatelessWidget {
             context,
             existing: m,
             allowPrescriptionEdits: canConfigureMedications,
+            careRecipients: careRecipients,
           );
         },
         title: Text(m.name, style: const TextStyle(fontWeight: FontWeight.w600)),

@@ -5,6 +5,7 @@ import "package:flutter/foundation.dart";
 import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 
+import "../../members/models/care_group_member.dart";
 import "../cubit/medications_cubit.dart";
 import "../models/care_group_medication.dart";
 import "../models/medication_dose_log.dart";
@@ -16,15 +17,20 @@ class MedicationEditorSheet extends StatefulWidget {
     super.key,
     this.existing,
     required this.allowPrescriptionEdits,
+    required this.careRecipients,
   });
 
   final CareGroupMedication? existing;
   final bool allowPrescriptionEdits;
 
+  /// People with [CareGroupMember.roles] containing `receives_care` (same roster as home).
+  final List<CareGroupMember> careRecipients;
+
   static Future<void> show(
     BuildContext context, {
     CareGroupMedication? existing,
     required bool allowPrescriptionEdits,
+    required List<CareGroupMember> careRecipients,
   }) {
     // Modal routes are not under the same subtree as the page [BlocProvider]; re-provide
     // so [context.read] in the sheet always works.
@@ -41,6 +47,7 @@ class MedicationEditorSheet extends StatefulWidget {
         child: MedicationEditorSheet(
           existing: existing,
           allowPrescriptionEdits: allowPrescriptionEdits,
+          careRecipients: careRecipients,
         ),
       ),
     );
@@ -73,8 +80,60 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
   bool _suggestLoading = false;
   List<String> _nameSuggestions = const [];
   bool _nameSuggestListener = false;
+  String? _selectedCareRecipientId;
 
   bool get _isEdit => widget.existing != null;
+
+  String _recipientDisplayName(String? id) {
+    if (id == null || id.isEmpty) {
+      return "Not assigned";
+    }
+    for (final m in widget.careRecipients) {
+      if (m.userId == id) {
+        return m.displayName;
+      }
+    }
+    return "Care recipient";
+  }
+
+  String? _dropdownRecipientValue() {
+    final v = _selectedCareRecipientId;
+    if (v == null || v.isEmpty) {
+      return null;
+    }
+    if (widget.careRecipients.any((c) => c.userId == v)) {
+      return v;
+    }
+    final orphan = widget.existing?.careRecipientId;
+    if (orphan != null && orphan == v) {
+      return v;
+    }
+    return null;
+  }
+
+  List<DropdownMenuItem<String>> _recipientMenuItems() {
+    final items = widget.careRecipients
+        .map(
+          (m) => DropdownMenuItem<String>(
+            value: m.userId,
+            child: Text(m.displayName),
+          ),
+        )
+        .toList();
+    final oid = widget.existing?.careRecipientId?.trim();
+    if (oid != null &&
+        oid.isNotEmpty &&
+        !widget.careRecipients.any((c) => c.userId == oid)) {
+      items.insert(
+        0,
+        DropdownMenuItem<String>(
+          value: oid,
+          child: const Text("Previous recipient (not on roster — choose current person)"),
+        ),
+      );
+    }
+    return items;
+  }
 
   Future<void> _saveCarerQuantityOnly() async {
     final m = widget.existing;
@@ -134,6 +193,12 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
     super.initState();
     final m = widget.existing;
     if (m != null) {
+      final cid = m.careRecipientId?.trim();
+      if (cid != null && cid.isNotEmpty) {
+        _selectedCareRecipientId = cid;
+      } else if (widget.careRecipients.length == 1) {
+        _selectedCareRecipientId = widget.careRecipients.first.userId;
+      }
       _name.text = m.name;
       _form.text = m.medicationForm;
       _dosage.text = m.dosage;
@@ -156,6 +221,8 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
       if (m.lowStockThreshold != null) {
         _lowStock.text = "${m.lowStockThreshold}";
       }
+    } else if (widget.careRecipients.length == 1) {
+      _selectedCareRecipientId = widget.careRecipients.first.userId;
     }
     if (widget.allowPrescriptionEdits) {
       _nameSuggestListener = true;
@@ -359,6 +426,18 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
       setState(() => _error = "Add a medication name (e.g. as on your label).");
       return;
     }
+    if (widget.careRecipients.isEmpty) {
+      setState(
+        () => _error =
+            "Add someone who receives care under Members before recording medications.",
+      );
+      return;
+    }
+    final rid = _selectedCareRecipientId?.trim();
+    if (rid == null || rid.isEmpty) {
+      setState(() => _error = "Choose who this medication is for.");
+      return;
+    }
     if (_quantity.text.trim().isNotEmpty) {
       final o = int.tryParse(_quantity.text.trim());
       if (o == null) {
@@ -421,6 +500,7 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
       if (_isEdit) {
         await cubit.updateMedication(
           medicationId: widget.existing!.id,
+          careRecipientId: rid,
           name: _name.text,
           medicationForm: _form.text,
           dosage: _dosage.text,
@@ -440,6 +520,7 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
         );
       } else {
         await cubit.addMedication(
+          careRecipientId: rid,
           name: _name.text,
           medicationForm: _form.text,
           dosage: _dosage.text,
@@ -496,6 +577,61 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
             style: Theme.of(context).textTheme.titleLarge,
           ),
           const SizedBox(height: 8),
+          if (ro)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  "For: ${_recipientDisplayName(widget.existing?.careRecipientId)}",
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w500,
+                      ),
+                ),
+              ),
+            ),
+          if (!ro) ...[
+            if (widget.careRecipients.isEmpty)
+              Card(
+                margin: EdgeInsets.zero,
+                color: Theme.of(context).colorScheme.errorContainer,
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Text(
+                    "Add at least one person who receives care (Members) before recording medications.",
+                    style: TextStyle(color: Theme.of(context).colorScheme.onErrorContainer),
+                  ),
+                ),
+              )
+            else if (widget.careRecipients.length == 1)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    "For: ${widget.careRecipients.first.displayName}",
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w500,
+                        ),
+                  ),
+                ),
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: DropdownButtonFormField<String>(
+                  key: ValueKey<String?>(_selectedCareRecipientId),
+                  initialValue: _dropdownRecipientValue(),
+                  decoration: const InputDecoration(
+                    labelText: "Care recipient",
+                  ),
+                  items: _recipientMenuItems(),
+                  onChanged: _saving
+                      ? null
+                      : (v) => setState(() => _selectedCareRecipientId = v),
+                ),
+              ),
+          ],
           if (ro)
             Text(
               "Prescription details are locked to principal carers and POA. You can update doses on hand only.",

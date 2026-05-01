@@ -17,6 +17,7 @@ final class CareGroupMedication {
   const CareGroupMedication({
     required this.id,
     required this.name,
+    this.careRecipientId,
     this.medicationForm = "",
     this.dosage = "",
     this.instructions = "",
@@ -33,6 +34,9 @@ final class CareGroupMedication {
 
   final String id;
   final String name;
+
+  /// [CareGroupMember.userId] of the person this medication is for (matches `recipientProfiles` or `members/`).
+  final String? careRecipientId;
 
   /// e.g. tablet, liquid, injection — from packaging (optional).
   final String medicationForm;
@@ -94,9 +98,15 @@ final class CareGroupMedication {
     } else if (lst is num) {
       lowStock = lst.toInt().clamp(0, 0x6fffffff);
     }
+    final cr = data["careRecipientId"];
+    String? careRecipientId;
+    if (cr is String && cr.trim().isNotEmpty) {
+      careRecipientId = cr.trim();
+    }
     return CareGroupMedication(
       id: id,
       name: (data["name"] as String?)?.trim() ?? "",
+      careRecipientId: careRecipientId,
       medicationForm: (data["medicationForm"] as String?)?.trim() ?? "",
       dosage: (data["dosage"] as String?)?.trim() ?? "",
       instructions: (data["instructions"] as String?)?.trim() ?? "",
