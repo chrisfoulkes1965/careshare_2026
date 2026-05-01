@@ -61,7 +61,13 @@ class _SignInScreenState extends State<SignInScreen> {
         _emailController.text.trim().isEmpty) {
       _emailController.text = emailParam;
     }
-    unawaited(PendingInvitationStore.saveFromQueryIfPresent(q["invite"]));
+    unawaited(
+      PendingInvitationStore.saveFromQueryForPreAuthUsersOnly(
+        isAuthenticated:
+            context.read<AuthBloc>().state.status == AuthStatus.authenticated,
+        invitationId: q["invite"],
+      ),
+    );
 
     final effectiveMismatch = Uri(
       path: normalizeAuthPath(routerUri.path),
@@ -149,6 +155,22 @@ class _SignInScreenState extends State<SignInScreen> {
             final hasInvite =
                 q["invite"] != null && q["invite"]!.trim().isNotEmpty;
 
+            if (hasInvite && state.status == AuthStatus.authenticated) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 20),
+                      Text("Joining your care team…"),
+                    ],
+                  ),
+                ),
+              );
+            }
+
             return LayoutBuilder(
               builder: (context, constraints) {
                 return SingleChildScrollView(
@@ -189,7 +211,7 @@ class _SignInScreenState extends State<SignInScreen> {
                                 const SizedBox(height: 8),
                                 Text(
                                   hasInvite
-                                      ? "Sign in or create an account to accept your invitation"
+                                      ? "Sign in to accept your invitation"
                                       : "Sign in to coordinate care",
                                   textAlign: TextAlign.center,
                                   style: Theme.of(context)

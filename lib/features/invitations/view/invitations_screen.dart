@@ -281,6 +281,7 @@ class _InvitationsView extends StatelessWidget {
                                   title: Text(inv.invitedEmail),
                                   subtitle: Text(
                                     "Roles: $roleLine\n"
+                                    "${inv.inviteOnboardingSubtitle}\n"
                                     "Invitation: ${inv.status}\n${inv.emailStatusLine}",
                                   ),
                                   isThreeLine: true,
@@ -396,7 +397,7 @@ class _InvitationsView extends StatelessWidget {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                "Resend requested. Email status will update in a few seconds if Resend is configured.",
+                "Resend requested. The invite status below should update in a few seconds.",
               ),
             ),
           );
@@ -421,8 +422,8 @@ class _InvitationsView extends StatelessWidget {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              "Invitation saved. The invitee will get an email with a sign-in link if "
-              "Resend and a sending address are configured for Cloud Functions.",
+              "Invitation saved. They’ll receive an email with a link when automated "
+              "invite email is enabled for your team.",
             ),
           ),
         );

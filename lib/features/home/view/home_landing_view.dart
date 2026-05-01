@@ -1,6 +1,5 @@
 import "dart:async" show unawaited;
 
-import "package:firebase_auth/firebase_auth.dart" show User;
 import "package:flutter/material.dart";
 import "package:flutter/services.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
@@ -828,13 +827,15 @@ class HomeLandingView extends StatelessWidget {
   const HomeLandingView({
     super.key,
     required this.pr,
-    required this.user,
+    required this.authSnapshot,
     required this.email,
     required this.showWizardBanner,
   });
 
   final ProfileReady pr;
-  final User? user;
+
+  /// Auth session identity (`AuthBloc` / Firebase getters mapped to [UserProfile]).
+  final UserProfile? authSnapshot;
   final String email;
   final bool showWizardBanner;
 
@@ -876,7 +877,7 @@ class HomeLandingView extends StatelessWidget {
               children: [
                 _Header(
                   pr: pr,
-                  user: user,
+                  authSnapshot: authSnapshot,
                   email: email,
                   groupName: groupName,
                   name: name,
@@ -1008,7 +1009,7 @@ void _openAddMenu(BuildContext context) {
 class _Header extends StatelessWidget {
   const _Header({
     required this.pr,
-    required this.user,
+    required this.authSnapshot,
     required this.email,
     required this.groupName,
     required this.name,
@@ -1017,7 +1018,7 @@ class _Header extends StatelessWidget {
   });
 
   final ProfileReady pr;
-  final User? user;
+  final UserProfile? authSnapshot;
   final String email;
   final String groupName;
   final String name;
@@ -1225,7 +1226,7 @@ class _Header extends StatelessWidget {
                         ),
                     ],
                   ),
-                  if (user != null)
+                  if (authSnapshot != null)
                     SizedBox(
                       width: headerActionSize,
                       height: headerActionSize,
@@ -1244,14 +1245,14 @@ class _Header extends StatelessWidget {
                             onTap: () {
                               showUserAccountMenu(
                                 context,
-                                user: user!,
+                                signedInIdentity: authSnapshot!,
                                 profileState: pr,
                               );
                             },
                             customBorder: const CircleBorder(),
                             child: CareUserAvatar(
                               radius: 20,
-                              user: user!,
+                              authFallback: authSnapshot!,
                               profile: pr.profile,
                             ),
                           ),

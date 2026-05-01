@@ -3,6 +3,8 @@ import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
 
 import "../../../core/constants/app_constants.dart";
+
+import "../../user/models/user_profile.dart";
 import "../../../core/theme/app_assets.dart";
 import "../../../core/theme/app_colors.dart";
 import "../../../core/theme/care_group_header_theme.dart";
@@ -13,8 +15,63 @@ import "../../profile/cubit/profile_state.dart";
 import "home_landing_view.dart";
 import "widgets/care_action_card.dart";
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final cubit = context.read<ProfileCubit>();
+    final acceptedId = cubit.consumeJustAcceptedCareGroupId();
+    final failureMsg = cubit.consumeJustFailedInviteRedeemError();
+    if (acceptedId != null) {
+      final s = cubit.state;
+      String label = "your care team";
+      if (s is ProfileReady) {
+        for (final o in s.careGroupOptions) {
+          if (o.careGroupId == acceptedId) {
+            label = o.displayName;
+            break;
+          }
+        }
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              "Welcome to $label! You can change your name and avatar in Settings.",
+            ),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      });
+      return;
+    }
+    if (failureMsg != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              "We couldn’t finish accepting your invitation: $failureMsg. "
+              "Ask the inviter to resend, or try again from Settings.",
+            ),
+            duration: const Duration(seconds: 8),
+          ),
+        );
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -63,15 +120,29 @@ class HomeScreen extends StatelessWidget {
             }
             if (profileState is ProfileReady) {
               final pr = profileState;
-              final banner =
-                  pr.profile.wizardSkipped && !pr.profile.wizardCompleted;
+              // Only nag about a "skipped wizard" when the user truly skipped
+              // it AND isn't already in a care team (i.e. didn't arrive via
+              // an invite). Invitees have `wizardSkipped` set as a routing
+              // flag but never saw the wizard.
+              final banner = pr.profile.wizardSkipped &&
+                  !pr.profile.wizardCompleted &&
+                  pr.careGroupOptions.isEmpty;
+              final au = authState.user;
+              final authSnapshot = au == null
+                  ? null
+                  : UserProfile.fromAuthSession(
+                      uid: au.uid,
+                      email: au.email ?? "",
+                      displayName: au.displayName,
+                      photoUrl: au.photoURL,
+                    );
               return Scaffold(
                 backgroundColor: resolveCareGroupHomePageStyle(
                   activeThemeArgb: pr.activeCareGroupThemeArgb,
                 ).scaffoldBackground,
                 body: HomeLandingView(
                   pr: pr,
-                  user: user,
+                  authSnapshot: authSnapshot,
                   email: email,
                   showWizardBanner: banner,
                 ),

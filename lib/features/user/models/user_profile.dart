@@ -3,6 +3,23 @@ import "package:equatable/equatable.dart";
 import "home_sections_visibility.dart";
 
 final class UserProfile extends Equatable {
+  /// Builds a lightweight profile from Firebase Auth-style session fields
+  /// (`AuthBloc.state.user` getters) — no `firebase_auth` import required at call sites.
+  factory UserProfile.fromAuthSession({
+    required String uid,
+    required String email,
+    String? displayName,
+    String? photoUrl,
+  }) {
+    final dn = displayName?.trim() ?? "";
+    return UserProfile(
+      uid: uid,
+      email: email,
+      displayName: dn,
+      photoUrl: photoUrl,
+    );
+  }
+
   const UserProfile({
     required this.uid,
     required this.email,

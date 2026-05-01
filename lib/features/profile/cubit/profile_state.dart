@@ -23,8 +23,6 @@ final class ProfileReady extends ProfileState {
     this.profile, {
     this.careGroupOptions = const [],
     this.requiresCareGroupSelection = false,
-    this.needsInvitationProfileCompletion = false,
-    this.pendingInvitationId,
   });
 
   final UserProfile profile;
@@ -34,19 +32,11 @@ final class ProfileReady extends ProfileState {
   /// valid [UserProfile.activeCareGroupId] (or [selectActiveCareGroup] has not been called yet).
   final bool requiresCareGroupSelection;
 
-  /// When true (and [pendingInvitationId] is set), the invitee must finish
-  /// [InviteProfileScreen] before [invitations] redemption runs.
-  final bool needsInvitationProfileCompletion;
-
-  final String? pendingInvitationId;
-
   @override
   List<Object?> get props => [
         profile,
         careGroupOptions,
         requiresCareGroupSelection,
-        needsInvitationProfileCompletion,
-        pendingInvitationId,
       ];
 }
 

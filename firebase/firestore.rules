@@ -259,11 +259,13 @@ service cloud.firestore {
         && request.resource.data.invitedBy == request.auth.uid
         && request.resource.data.status == 'pending';
 
+      // Invitee (matching email) may patch any fields once the invite is pending,
+      // including funnel timestamps and `status` flipping to accepted/declined.
+      // Group admins/principals retain full control of invitations they own.
       allow update: if signedIn() && (
         (
           emailMatchesInvite(resource.data)
           && resource.data.status == 'pending'
-          && request.resource.data.status in ['accepted', 'declined']
         )
         || (
           resource.data.keys().hasAny(['careGroupId'])
@@ -297,7 +299,11 @@ service cloud.firestore {
     }
 
     match /careGroups/{careGroupId}/members/{userId} {
-      allow read: if isCareGroupMember(careGroupId);
+      // Read own member doc even when not yet a member (needed by the
+      // [redeemInvitationForSignedInUser] transaction which reads `members/{uid}`
+      // before creating it to merge roles when an invite is re-sent).
+      allow get: if isSelf(userId) || isCareGroupMember(careGroupId);
+      allow list: if isCareGroupMember(careGroupId);
 
       allow create: if signedIn() && (
         (

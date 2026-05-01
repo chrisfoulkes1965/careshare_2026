@@ -61,7 +61,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _emailController.text.trim().isEmpty) {
       _emailController.text = emailParam;
     }
-    unawaited(PendingInvitationStore.saveFromQueryIfPresent(q["invite"]));
+    unawaited(
+      PendingInvitationStore.saveFromQueryForPreAuthUsersOnly(
+        isAuthenticated:
+            context.read<AuthBloc>().state.status == AuthStatus.authenticated,
+        invitationId: q["invite"],
+      ),
+    );
 
     final effectiveMismatch = Uri(
       path: normalizeAuthPath(routerUri.path),
@@ -223,6 +229,24 @@ class _RegisterScreenState extends State<RegisterScreen> {
             }
           },
           builder: (context, state) {
+            final showProfileWait = hasInvite &&
+                state.status == AuthStatus.authenticated;
+            if (showProfileWait) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 20),
+                      Text("Joining your care team…"),
+                    ],
+                  ),
+                ),
+              );
+            }
+
             return SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: Center(
@@ -254,8 +278,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         const SizedBox(height: 8),
                         Text(
                           hasInvite
-                              ? "Create a password or use Google. You’ll set your "
-                                  "name and avatar on the next step."
+                              ? "Create a password or use Google to accept your invitation."
                               : "Create your account to get started",
                           textAlign: TextAlign.center,
                           style:

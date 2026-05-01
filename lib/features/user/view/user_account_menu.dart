@@ -1,4 +1,3 @@
-import "package:firebase_auth/firebase_auth.dart";
 import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
@@ -6,20 +5,23 @@ import "package:go_router/go_router.dart";
 import "../../auth/bloc/auth_bloc.dart";
 import "../../auth/bloc/auth_event.dart";
 import "../../profile/cubit/profile_state.dart";
+import "../models/user_profile.dart";
 import "widgets/care_user_avatar.dart";
 
 void showUserAccountMenu(
   BuildContext context, {
-  required User user,
+  required UserProfile signedInIdentity,
   required ProfileState profileState,
 }) {
   final p = profileState is ProfileReady ? profileState.profile : null;
   final title = p != null && p.displayName.isNotEmpty
       ? p.displayName
-      : (user.displayName?.trim().isNotEmpty == true
-          ? user.displayName!
-          : (user.email?.split("@").first ?? "You"));
-  final sub = p != null && p.email.isNotEmpty ? p.email : (user.email ?? "");
+      : (signedInIdentity.displayName.trim().isNotEmpty
+          ? signedInIdentity.displayName
+          : (signedInIdentity.email.split("@").first));
+  final sub = p != null && p.email.isNotEmpty
+      ? p.email
+      : signedInIdentity.email;
 
   showModalBottomSheet<void>(
     context: context,
@@ -37,8 +39,8 @@ void showUserAccountMenu(
                 ListTile(
                   leading: CareUserAvatar(
                     radius: 28,
-                    user: user,
                     profile: p,
+                    authFallback: signedInIdentity,
                   ),
                   title: Text(title),
                   subtitle: sub.isNotEmpty

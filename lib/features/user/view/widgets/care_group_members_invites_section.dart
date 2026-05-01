@@ -1,4 +1,3 @@
-import "package:firebase_auth/firebase_auth.dart" show User;
 import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
@@ -91,6 +90,15 @@ class CareGroupMembersInvitesSection extends StatelessWidget {
             return BlocBuilder<AuthBloc, AuthState>(
               buildWhen: (p, c) => p.user?.uid != c.user?.uid,
               builder: (context, auth) {
+                final sessionUser = auth.user;
+                final authSnapshot = sessionUser == null
+                    ? null
+                    : UserProfile.fromAuthSession(
+                        uid: sessionUser.uid,
+                        email: sessionUser.email ?? "",
+                        displayName: sessionUser.displayName,
+                        photoUrl: sessionUser.photoURL,
+                      );
                 final selfUid = auth.user?.uid;
                 return BlocBuilder<ProfileCubit, ProfileState>(
                   buildWhen: (p, c) {
@@ -114,7 +122,7 @@ class CareGroupMembersInvitesSection extends StatelessWidget {
                           _SettingsMemberRow(
                             member: m,
                             isSelf: selfUid != null && m.userId == selfUid,
-                            authUser: auth.user,
+                            authFallback: authSnapshot,
                             myProfile: myProfile,
                           ),
                         if (more > 0)
@@ -212,7 +220,7 @@ class CareGroupMembersInvitesSection extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                               ),
                               Text(
-                                "Pending",
+                                inv.inviteOnboardingProgressCompact,
                                 style: t.textTheme.labelSmall?.copyWith(
                                   color: t.colorScheme.onSurfaceVariant,
                                 ),
@@ -254,13 +262,13 @@ class _SettingsMemberRow extends StatelessWidget {
   const _SettingsMemberRow({
     required this.member,
     required this.isSelf,
-    required this.authUser,
+    required this.authFallback,
     this.myProfile,
   });
 
   final CareGroupMember member;
   final bool isSelf;
-  final User? authUser;
+  final UserProfile? authFallback;
   final UserProfile? myProfile;
 
   @override
@@ -289,7 +297,7 @@ class _SettingsMemberRow extends StatelessWidget {
         children: [
           CareUserAvatar(
             radius: 18,
-            user: isSelf ? authUser : null,
+            authFallback: isSelf ? authFallback : null,
             profile: p,
           ),
           const SizedBox(width: 10),

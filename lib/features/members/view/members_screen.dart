@@ -1,6 +1,5 @@
-import "dart:async";
+import "dart:async" show unawaited;
 
-import "package:firebase_auth/firebase_auth.dart" show User;
 import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
@@ -141,6 +140,15 @@ class _MembersView extends StatelessWidget {
                   return BlocBuilder<AuthBloc, AuthState>(
                     buildWhen: (p, c) => p.user?.uid != c.user?.uid,
                     builder: (context, auth) {
+                      final sessionUser = auth.user;
+                      final authSnapshot = sessionUser == null
+                          ? null
+                          : UserProfile.fromAuthSession(
+                              uid: sessionUser.uid,
+                              email: sessionUser.email ?? "",
+                              displayName: sessionUser.displayName,
+                              photoUrl: sessionUser.photoURL,
+                            );
                       final selfUid = auth.user?.uid;
                       return BlocBuilder<ProfileCubit, ProfileState>(
                         buildWhen: (p, c) {
@@ -199,7 +207,7 @@ class _MembersView extends StatelessWidget {
                                           state.list[i].userId == selfUid
                                       ? selfProfile
                                       : null,
-                                  authUser: auth.user,
+                                  authFallback: authSnapshot,
                                 ),
                               ],
                               if (canAdd) ...[
@@ -235,7 +243,7 @@ class _MemberTile extends StatelessWidget {
     required this.canDelete,
     required this.dataCareGroupId,
     required this.selfProfile,
-    required this.authUser,
+    required this.authFallback,
   });
 
   final CareGroupMember member;
@@ -245,7 +253,7 @@ class _MemberTile extends StatelessWidget {
   final bool canDelete;
   final String dataCareGroupId;
   final UserProfile? selfProfile;
-  final User? authUser;
+  final UserProfile? authFallback;
 
   @override
   Widget build(BuildContext context) {
@@ -333,7 +341,7 @@ class _MemberTile extends StatelessWidget {
           children: [
             CareUserAvatar(
               radius: 22,
-              user: highlight ? authUser : null,
+              authFallback: highlight ? authFallback : null,
               profile: highlight && selfProfile != null ? selfProfile! : fromRoster,
             ),
             const SizedBox(width: 12),

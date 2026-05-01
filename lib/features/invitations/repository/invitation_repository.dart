@@ -81,6 +81,65 @@ class InvitationRepository {
     return st == "pending";
   }
 
+  /// Writes invitee onboarding milestones on `invitations/{id}` (pending only): link opened /
+  /// account step (first registration vs returned sign-in) while the invitee reaches the profile
+  /// gate. Failures are ignored so profile load keeps working.
+  Future<void> recordInviteeOnboardingMilestonesIfUnset(String invitationId) async {
+    if (!_firebaseReady) {
+      return;
+    }
+    final u = FirebaseAuth.instance.currentUser;
+    if (u == null) {
+      return;
+    }
+    final t = invitationId.trim();
+    if (t.isEmpty) {
+      return;
+    }
+
+    final iref = FirebaseFirestore.instance.collection("invitations").doc(t);
+
+    try {
+      await FirebaseFirestore.instance.runTransaction((txn) async {
+        final snap = await txn.get(iref);
+        if (!snap.exists) {
+          return;
+        }
+        final d = snap.data() ?? {};
+        if ((d["status"] as String?)?.trim() != "pending") {
+          return;
+        }
+        final invited =
+            (d["invitedEmail"] as String?)?.toLowerCase().trim() ?? "";
+        final email = u.email?.toLowerCase().trim() ?? "";
+        if (invited.isEmpty || email.isEmpty || invited != email) {
+          return;
+        }
+
+        final patch = <String, dynamic>{};
+        if (d["inviteLinkFollowedAt"] == null) {
+          patch["inviteLinkFollowedAt"] = FieldValue.serverTimestamp();
+        }
+        if (d["inviteRegisteredAt"] == null && d["inviteSignedInAt"] == null) {
+          final created = u.metadata.creationTime;
+          final freshAccount = created != null &&
+              DateTime.now().difference(created).abs().inMinutes < 5;
+          if (freshAccount) {
+            patch["inviteRegisteredAt"] = FieldValue.serverTimestamp();
+          } else {
+            patch["inviteSignedInAt"] = FieldValue.serverTimestamp();
+          }
+        }
+        if (patch.isEmpty) {
+          return;
+        }
+        txn.update(iref, patch);
+      });
+    } catch (_) {
+      // Offline or rules mismatch — onboarding UI still works locally.
+    }
+  }
+
   static List<String> _rolesFromFirestore(Map<String, dynamic> d) {
     final raw = d["invitedRoles"];
     if (raw is List) {
@@ -180,7 +239,13 @@ class InvitationRepository {
           if (avatarIndex != null && avatarIndex >= 1) "avatarIndex": avatarIndex,
         });
       }
-      txn.update(iref, {"status": "accepted"});
+      txn.update(
+        iref,
+        {
+          "status": "accepted",
+          "inviteAcceptedCareGroupAt": FieldValue.serverTimestamp(),
+        },
+      );
     });
 
     return cg;

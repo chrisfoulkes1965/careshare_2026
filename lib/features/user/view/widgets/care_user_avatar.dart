@@ -1,4 +1,3 @@
-import "package:firebase_auth/firebase_auth.dart" show User;
 import "package:flutter/material.dart";
 
 import "../../../../core/avatars/avatar_choices.dart";
@@ -6,24 +5,27 @@ import "../../../../core/theme/app_colors.dart";
 import "../../models/user_profile.dart";
 
 /// Account photo, preset avatar, or initials — for toolbars, menus, and settings.
+///
+/// Prefer [profile] (Firestore-backed). [authFallback] supplies auth-only photo/name
+/// when roster data does not yet have them.
 class CareUserAvatar extends StatelessWidget {
   const CareUserAvatar({
     super.key,
     required this.radius,
-    this.user,
+    this.authFallback,
     this.profile,
   });
 
   final double radius;
-  final User? user;
+  final UserProfile? authFallback;
   final UserProfile? profile;
 
   @override
   Widget build(BuildContext context) {
     final p = profile;
     final fromProfile = p?.photoUrl?.trim() ?? "";
-    final fromUser = user?.photoURL?.trim() ?? "";
-    final networkUrl = fromProfile.isNotEmpty ? fromProfile : fromUser;
+    final fromAuth = authFallback?.photoUrl?.trim() ?? "";
+    final networkUrl = fromProfile.isNotEmpty ? fromProfile : fromAuth;
     if (networkUrl.isNotEmpty) {
       return CircleAvatar(
         radius: radius,
@@ -48,14 +50,23 @@ class CareUserAvatar extends StatelessWidget {
         ),
       );
     }
-    final name =
-        (p?.displayName ?? user?.displayName ?? user?.email ?? "?").trim();
+    String nameForInitials =
+        ((p?.displayName.trim().isNotEmpty ?? false) ? p!.displayName.trim() : null) ??
+            (authFallback?.displayName.trim().isNotEmpty == true
+                ? authFallback!.displayName.trim()
+                : null) ??
+            (authFallback?.email.contains("@") == true
+                ? authFallback!.email.split("@").first
+                : null) ??
+            "?";
+    if (nameForInitials.isEmpty) nameForInitials = "?";
+
     return CircleAvatar(
       radius: radius,
       backgroundColor: AppColors.tealPrimary,
       foregroundColor: Colors.white,
       child: Text(
-        _initials(name),
+        _initials(nameForInitials),
         style: TextStyle(
           fontSize: radius * 0.9,
           fontWeight: FontWeight.w600,

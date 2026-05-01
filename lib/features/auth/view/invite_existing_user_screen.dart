@@ -1,6 +1,7 @@
 import "dart:async";
 
 import "package:flutter/material.dart";
+import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
 
 import "../../../core/constants/app_constants.dart";
@@ -9,6 +10,8 @@ import "../../../core/invite/invitation_landing_preview.dart";
 import "../../../core/invite/pending_invitation_store.dart";
 import "../../../core/theme/app_assets.dart";
 import "../../../core/theme/app_colors.dart";
+import "../bloc/auth_bloc.dart";
+import "../bloc/auth_state.dart";
 import "widgets/invitation_landing_panel.dart";
 
 /// Shown when someone with an existing CareShare account opens an invite link and
@@ -35,7 +38,13 @@ class _InviteExistingUserScreenState extends State<InviteExistingUserScreen> {
       path: routerUri.path,
       routerUri: routerUri,
     );
-    unawaited(PendingInvitationStore.saveFromQueryIfPresent(q["invite"]));
+    unawaited(
+      PendingInvitationStore.saveFromQueryForPreAuthUsersOnly(
+        isAuthenticated:
+            context.read<AuthBloc>().state.status == AuthStatus.authenticated,
+        invitationId: q["invite"],
+      ),
+    );
 
     final invite = q["invite"]?.trim();
     if (invite != null &&

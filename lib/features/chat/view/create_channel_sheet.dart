@@ -1,6 +1,5 @@
 import "dart:async";
 
-import "package:firebase_auth/firebase_auth.dart";
 import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 
@@ -13,11 +12,15 @@ class CreateChannelSheet extends StatefulWidget {
   const CreateChannelSheet({
     super.key,
     required this.careGroupId,
+    required this.currentUserUid,
     this.memberListCareGroupId,
   });
 
   /// `careGroups/{id}/chatChannels`
   final String careGroupId;
+
+  /// Signed-in user's Firebase uid (from [ChannelsCubit] / session).
+  final String currentUserUid;
 
   /// `careGroups/{id}/members` for the roster; defaults to [careGroupId].
   final String? memberListCareGroupId;
@@ -43,6 +46,7 @@ class CreateChannelSheet extends StatefulWidget {
             value: channels,
             child: CreateChannelSheet(
               careGroupId: careGroupId,
+              currentUserUid: channels.uid,
               memberListCareGroupId: memberListCareGroupId,
             ),
           ),
@@ -73,8 +77,8 @@ class _CreateChannelSheetState extends State<CreateChannelSheet> {
   }
 
   void _initSelectionOnce(List<CareGroupMember> members) {
-    final my = FirebaseAuth.instance.currentUser?.uid;
-    if (my == null) {
+    final my = widget.currentUserUid.trim();
+    if (my.isEmpty) {
       return;
     }
     if (_selectionInitialized) {

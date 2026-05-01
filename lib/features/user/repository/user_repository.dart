@@ -1,5 +1,4 @@
 import "package:cloud_firestore/cloud_firestore.dart";
-import "package:firebase_auth/firebase_auth.dart";
 
 import "../../../core/firebase/firestore_remote_compat.dart";
 import "../../care_group/models/care_group_option.dart";
@@ -27,22 +26,22 @@ class UserRepository {
     return _map(uid, snap.data()!);
   }
 
-  Future<void> ensureUserDocument(User user) async {
+  Future<void> ensureUserDocument(UserProfile identity) async {
     if (!_firebaseReady) return;
-    final ref = _userRef(user.uid);
+    final ref = _userRef(identity.uid);
     final snap = await ref.get();
     if (snap.exists) return;
 
-    final email = user.email ?? "";
-    final displayName = (user.displayName?.trim().isNotEmpty ?? false)
-        ? user.displayName!.trim()
+    final email = identity.email;
+    final displayName = identity.displayName.trim().isNotEmpty
+        ? identity.displayName.trim()
         : _emailLocalPart(email);
 
     await ref.set(
       {
         "displayName": displayName,
         "email": email,
-        "photoUrl": user.photoURL,
+        "photoUrl": identity.photoUrl,
         "avatarIndex": null,
         "phone": null,
         "dateOfBirth": null,

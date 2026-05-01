@@ -12,7 +12,6 @@ import "../features/care_pathway/view/pathways_screen.dart";
 import "../features/home/view/coming_soon_screen.dart";
 import "../features/care_group/view/care_group_select_screen.dart";
 import "../features/home/view/home_screen.dart";
-import "../features/invite_profile/view/invite_profile_screen.dart";
 import "../features/calendar/view/calendar_screen.dart";
 import "../features/chat/view/channel_chat_screen.dart";
 import "../features/chat/view/chat_channels_screen.dart";
@@ -63,7 +62,6 @@ abstract final class AppRouteNames {
   static const userSettingsCareGroups = "userSettingsCareGroups";
   static const userSettingsHomepage = "userSettingsHomepage";
   static const userSettingsSecurity = "userSettingsSecurity";
-  static const inviteProfile = "inviteProfile";
 }
 
 abstract final class AppRouter {
@@ -123,15 +121,22 @@ abstract final class AppRouter {
             profileState is ProfileAnonymous) {
           /// Invite deep links must not bounce to [/loading]: that drops query
           /// params before sign-in can run [inviteSignedLinkNeedsDifferentFirebaseUser]
-          /// and [SignInScreen] mismatch sign-out.
-          if (authState.status == AuthStatus.authenticated &&
-              inviteSignedLinkNeedsDifferentFirebaseUser(
-                authState: authState,
-                uri: state.uri,
-              )) {
-            if (loc == "/sign-in" ||
-                loc == "/register" ||
-                loc == "/invite-existing-user") {
+          /// and [SignInScreen] mismatch sign-out, and it strips `?invite=` so the
+          /// inline invite-join step is not shown after register.
+          final isAuthScreen = loc == "/sign-in" ||
+              loc == "/register" ||
+              loc == "/invite-existing-user";
+          if (authState.status == AuthStatus.authenticated && isAuthScreen) {
+            final eff = effectiveInviteAwareUri(state.uri);
+            final hasInvite =
+                (eff.queryParameters["invite"]?.trim() ?? "").isNotEmpty;
+            if (hasInvite) {
+              return null;
+            }
+            if (inviteSignedLinkNeedsDifferentFirebaseUser(
+              authState: authState,
+              uri: state.uri,
+            )) {
               return null;
             }
           }
@@ -141,14 +146,6 @@ abstract final class AppRouter {
         if (profileState is ProfileReady) {
           final profile = profileState.profile;
           final pr = profileState;
-
-          if (pr.needsInvitationProfileCompletion &&
-              (pr.pendingInvitationId ?? "").trim().isNotEmpty) {
-            if (loc == "/invite-profile") {
-              return null;
-            }
-            return "/invite-profile";
-          }
 
           if (profile.needsWizard) {
             if (!loc.startsWith("/setup")) {
@@ -215,11 +212,6 @@ abstract final class AppRouter {
           path: "/invite-existing-user",
           name: AppRouteNames.inviteExistingUser,
           builder: (context, state) => const InviteExistingUserScreen(),
-        ),
-        GoRoute(
-          path: "/invite-profile",
-          name: AppRouteNames.inviteProfile,
-          builder: (context, state) => const InviteProfileScreen(),
         ),
         GoRoute(
           path: "/setup",

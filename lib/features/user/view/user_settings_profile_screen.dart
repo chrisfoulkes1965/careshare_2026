@@ -8,6 +8,7 @@ import "../../auth/bloc/auth_bloc.dart";
 import "../../auth/repository/auth_repository.dart";
 import "../../profile/cubit/profile_cubit.dart";
 import "../../profile/cubit/profile_state.dart";
+import "../models/user_profile.dart";
 import "../repository/user_repository.dart";
 import "widgets/care_user_avatar.dart";
 
@@ -50,8 +51,8 @@ class _UserSettingsProfileScreenState extends State<UserSettingsProfileScreen> {
     if (!_formKey.currentState!.validate()) {
       return;
     }
-    final user = context.read<AuthBloc>().state.user;
-    if (user == null) {
+    final session = context.read<AuthBloc>().state.user;
+    if (session == null) {
       return;
     }
     final t = _nameController.text.trim();
@@ -65,7 +66,7 @@ class _UserSettingsProfileScreenState extends State<UserSettingsProfileScreen> {
         return;
       }
       await userRepo.updateProfileFields(
-        user.uid,
+        session.uid,
         {"displayName": t},
       );
       if (!mounted) {
@@ -96,8 +97,8 @@ class _UserSettingsProfileScreenState extends State<UserSettingsProfileScreen> {
     if (_avatarBusy) {
       return;
     }
-    final user = context.read<AuthBloc>().state.user;
-    if (user == null) {
+    final session = context.read<AuthBloc>().state.user;
+    if (session == null) {
       return;
     }
     final userRepo = context.read<UserRepository>();
@@ -105,7 +106,7 @@ class _UserSettingsProfileScreenState extends State<UserSettingsProfileScreen> {
     final profileCubit = context.read<ProfileCubit>();
     setState(() => _avatarBusy = true);
     try {
-      await userRepo.setAvatarPreset(user.uid, oneBased);
+      await userRepo.setAvatarPreset(session.uid, oneBased);
       if (!mounted) {
         return;
       }
@@ -140,11 +141,11 @@ class _UserSettingsProfileScreenState extends State<UserSettingsProfileScreen> {
     if (_avatarBusy) {
       return;
     }
-    final user = context.read<AuthBloc>().state.user;
-    if (user == null) {
+    final session = context.read<AuthBloc>().state.user;
+    if (session == null) {
       return;
     }
-    final url = user.photoURL?.trim();
+    final url = session.photoURL?.trim();
     if (url == null || url.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -164,7 +165,7 @@ class _UserSettingsProfileScreenState extends State<UserSettingsProfileScreen> {
       if (!mounted) {
         return;
       }
-      await userRepo.setProfilePhotoUrl(user.uid, url);
+      await userRepo.setProfilePhotoUrl(session.uid, url);
       if (!mounted) {
         return;
       }
@@ -200,10 +201,16 @@ class _UserSettingsProfileScreenState extends State<UserSettingsProfileScreen> {
           );
         }
         final p = ps.profile;
-        final user = context.watch<AuthBloc>().state.user;
-        if (user == null) {
+        final session = context.watch<AuthBloc>().state.user;
+        if (session == null) {
           return const Scaffold(body: Center(child: Text("Not signed in.")));
         }
+        final authFallback = UserProfile.fromAuthSession(
+          uid: session.uid,
+          email: session.email ?? "",
+          displayName: session.displayName,
+          photoUrl: session.photoURL,
+        );
         return Scaffold(
           appBar: AppBar(
             title: const Text("Profile & avatar"),
@@ -224,8 +231,8 @@ class _UserSettingsProfileScreenState extends State<UserSettingsProfileScreen> {
               Center(
                 child: CareUserAvatar(
                   radius: 48,
-                  user: user,
                   profile: p,
+                  authFallback: authFallback,
                 ),
               ),
               const SizedBox(height: 24),
@@ -267,8 +274,8 @@ class _UserSettingsProfileScreenState extends State<UserSettingsProfileScreen> {
                 style: Theme.of(context).textTheme.titleSmall,
               ),
               const SizedBox(height: 8),
-              if (user.photoURL != null &&
-                  user.photoURL!.trim().isNotEmpty) ...[
+              if (session.photoURL != null &&
+                  session.photoURL!.trim().isNotEmpty) ...[
                 OutlinedButton.icon(
                   onPressed: _avatarBusy ? null : _useAccountPhoto,
                   icon: const Icon(Icons.cloud_download_outlined),
