@@ -71,5 +71,9 @@
 		<string>https</string>
 		<string>whatsapp</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>CareShare uses the camera so you can take a profile photo.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>CareShare uses your photo library so you can choose a profile picture.</string>
 </dict>
 </plist>

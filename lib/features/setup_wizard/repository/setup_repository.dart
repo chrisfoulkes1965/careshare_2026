@@ -95,7 +95,7 @@ class SetupRepository {
     });
 
     batch.set(groupRef.collection("members").doc(uid), {
-      "roles": ["principal_carer"],
+      "roles": ["care_group_administrator", "principal_carer"],
       "displayName": submit.principalDisplayName.trim(),
       "joinedAt": now,
       "kudosScore": 0,

@@ -27,6 +27,7 @@ final class CareGroupMedication {
     this.scheduleWeekdays = const [],
     this.scheduleMonthDays = const [],
     this.quantityOnHand,
+    this.lowStockThreshold,
   });
 
   final String id;
@@ -45,6 +46,9 @@ final class CareGroupMedication {
 
   /// Doses remaining; `null` means not set — treat as [dosesIn28DayPeriod] for planning.
   final int? quantityOnHand;
+
+  /// Alert when [quantityOnHand] is at or below this (requires both set).
+  final int? lowStockThreshold;
 
   static CareGroupMedication fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> d) {
     return fromMap(d.id, d.data());
@@ -79,6 +83,13 @@ final class CareGroupMedication {
     if (qoh != null) {
       qoh = qoh.clamp(0, 0x6fffffff);
     }
+    final lst = data["lowStockThreshold"];
+    int? lowStock;
+    if (lst is int) {
+      lowStock = lst.clamp(0, 0x6fffffff);
+    } else if (lst is num) {
+      lowStock = lst.toInt().clamp(0, 0x6fffffff);
+    }
     return CareGroupMedication(
       id: id,
       name: (data["name"] as String?)?.trim() ?? "",
@@ -92,6 +103,7 @@ final class CareGroupMedication {
       scheduleWeekdays: wds,
       scheduleMonthDays: mds,
       quantityOnHand: qoh,
+      lowStockThreshold: lowStock,
     );
   }
 
@@ -261,6 +273,16 @@ final class CareGroupMedication {
       MedicationScheduleType.weekly => scheduleWeekdays.isNotEmpty,
       MedicationScheduleType.monthly => scheduleMonthDays.isNotEmpty,
     } && _scheduleSlotCount > 0 && _scheduleSlotCount <= maxNotificationSlots;
+  }
+
+  /// True when an explicit count is at or below the configured threshold.
+  bool get isLowStock {
+    final q = quantityOnHand;
+    final t = lowStockThreshold;
+    if (q == null || t == null) {
+      return false;
+    }
+    return q <= t;
   }
 }
 

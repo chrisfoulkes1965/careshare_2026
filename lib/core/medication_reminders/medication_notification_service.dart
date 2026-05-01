@@ -19,6 +19,8 @@ final class MedicationNotificationService {
   bool _ready = false;
   String? _lastCareGroupId;
   List<CareGroupMedication> _lastMeds = const [];
+  int? _lastQuietStartMin;
+  int? _lastQuietEndMin;
   void Function(String payload)? _dosePayloadHandler;
   final List<String> _deferredDosePayloads = [];
   void Function(String payload)? _chatPayloadHandler;
@@ -141,7 +143,12 @@ final class MedicationNotificationService {
     if (defaultTargetPlatform == TargetPlatform.windows) {
       final careGroupId = _lastCareGroupId;
       if (careGroupId != null && _lastMeds.isNotEmpty) {
-        await syncMedications(careGroupId, _lastMeds);
+        await syncMedications(
+          careGroupId,
+          _lastMeds,
+          quietHoursStartMinute: _lastQuietStartMin,
+          quietHoursEndMinute: _lastQuietEndMin,
+        );
       }
     }
   }
@@ -159,13 +166,20 @@ final class MedicationNotificationService {
     _lastMeds = const [];
   }
 
-  Future<void> syncMedications(String careGroupId, List<CareGroupMedication> meds) async {
+  Future<void> syncMedications(
+    String careGroupId,
+    List<CareGroupMedication> meds, {
+    int? quietHoursStartMinute,
+    int? quietHoursEndMinute,
+  }) async {
     if (kIsWeb || !_ready) {
       return;
     }
 
     _lastCareGroupId = careGroupId;
     _lastMeds = List<CareGroupMedication>.from(meds);
+    _lastQuietStartMin = quietHoursStartMinute;
+    _lastQuietEndMin = quietHoursEndMinute;
 
     try {
       await _plugin.cancelAll().timeout(
@@ -208,6 +222,8 @@ final class MedicationNotificationService {
       careGroupId: careGroupId,
       meds: meds,
       isWindows: isWin,
+      quietHoursStartMinute: quietHoursStartMinute,
+      quietHoursEndMinute: quietHoursEndMinute,
     );
 
     for (final n in nudges) {
@@ -268,6 +284,49 @@ final class MedicationNotificationService {
       );
     } catch (e, st) {
       debugPrint("showChatForegroundNotification: $e\n$st");
+    }
+  }
+
+  /// Foreground / data-only FCM for medication reminders (mirrors like chat).
+  Future<void> showMedicationForegroundNotification({
+    required String title,
+    required String body,
+    required String payload,
+  }) async {
+    if (kIsWeb || !_ready) {
+      return;
+    }
+    final id = (DateTime.now().millisecondsSinceEpoch % 100000) + 800000;
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _channelId,
+        _channelName,
+        channelDescription: "Medication reminders for your care group.",
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+      iOS: DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      ),
+      macOS: DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      ),
+      windows: WindowsNotificationDetails(),
+    );
+    try {
+      await _plugin.show(
+        id: id,
+        title: title,
+        body: body,
+        notificationDetails: details,
+        payload: payload,
+      );
+    } catch (e, st) {
+      debugPrint("showMedicationForegroundNotification: $e\n$st");
     }
   }
 }

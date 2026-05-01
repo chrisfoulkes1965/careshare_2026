@@ -26,7 +26,9 @@ import "../../calendar/repository/linked_calendar_events_repository.dart";
 import "../../expenses/models/care_group_expense.dart";
 import "../../expenses/repository/expenses_repository.dart";
 import "../../medications/models/care_group_medication.dart";
+import "../../medications/repository/medication_care_group_settings_repository.dart";
 import "../../medications/repository/medications_repository.dart";
+import "home_medication_reorder_banner.dart";
 import "../../meetings/models/care_group_meeting.dart";
 import "../../meetings/repository/meetings_repository.dart";
 import "../../tasks/models/care_group_task.dart";
@@ -931,6 +933,20 @@ class HomeLandingView extends StatelessWidget {
                   ),
                 ],
                 const SizedBox(height: 4),
+                if (dataId != null &&
+                    dataId.isNotEmpty &&
+                    profile.resolvedAlertPreferences.medicationReorder.inApp) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 0),
+                    child: HomeMedicationReorderBanner(
+                      careGroupDataId: dataId,
+                      medicationsRepository:
+                          context.read<MedicationsRepository>(),
+                      settingsRepository: context
+                          .read<MedicationCareGroupSettingsRepository>(),
+                    ),
+                  ),
+                ],
                 Padding(
                   padding: const EdgeInsets.fromLTRB(18, 0, 18, 0),
                   child: _HomeConfigurableLandingSections(

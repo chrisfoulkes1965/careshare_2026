@@ -2,6 +2,7 @@ import "package:flutter_local_notifications/flutter_local_notifications.dart";
 import "package:timezone/timezone.dart" as tz;
 
 import "../../features/medications/models/care_group_medication.dart";
+import "medication_quiet_hours.dart";
 
 /// A single grouped local notification.
 final class DoseNudge {
@@ -103,6 +104,8 @@ List<DoseNudge> buildDoseNudges({
   required String careGroupId,
   required List<CareGroupMedication> meds,
   required bool isWindows,
+  int? quietHoursStartMinute,
+  int? quietHoursEndMinute,
 }) {
   DateTimeComponents? nullOnWin(DateTimeComponents? x) {
     if (x == null) {
@@ -121,11 +124,16 @@ List<DoseNudge> buildDoseNudges({
     if (idSet.isEmpty) {
       return;
     }
+    final adjusted = adjustAwayFromQuietHours(
+      when,
+      quietHoursStartMinute: quietHoursStartMinute,
+      quietHoursEndMinute: quietHoursEndMinute,
+    );
     out.add(
       DoseNudge(
         notificationId: doseNudgeHashId(careGroupId, gk),
         payload: _pay(careGroupId, idSet),
-        scheduledDate: when,
+        scheduledDate: adjusted,
         dateTimeMatch: nullOnWin(match),
         body: _bodyFor(nameList),
       ),

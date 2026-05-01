@@ -43,6 +43,7 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
   final _name = TextEditingController();
   final _dosage = TextEditingController();
   final _quantity = TextEditingController();
+  final _lowStock = TextEditingController();
   final _instructions = TextEditingController();
   final _notes = TextEditingController();
   final _rxNorm = const RxNormMedicationSuggestClient();
@@ -85,6 +86,9 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
       if (m.quantityOnHand != null) {
         _quantity.text = "${m.quantityOnHand}";
       }
+      if (m.lowStockThreshold != null) {
+        _lowStock.text = "${m.lowStockThreshold}";
+      }
     }
     _name.addListener(_onNameTextChanged);
   }
@@ -96,6 +100,7 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
     _name.dispose();
     _dosage.dispose();
     _quantity.dispose();
+    _lowStock.dispose();
     _instructions.dispose();
     _notes.dispose();
     super.dispose();
@@ -288,6 +293,17 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
         return;
       }
     }
+    if (_lowStock.text.trim().isNotEmpty) {
+      final ls = int.tryParse(_lowStock.text.trim());
+      if (ls == null) {
+        setState(() => _error = "Low-stock threshold must be a whole number.");
+        return;
+      }
+      if (ls < 0) {
+        setState(() => _error = "Low-stock threshold cannot be negative.");
+        return;
+      }
+    }
     if (_reminderEnabled) {
       if (_times.isEmpty) {
         setState(() => _error = "Add at least one reminder time, or turn reminders off.");
@@ -316,6 +332,9 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
     final cup = _quantity.text.trim();
     int? qParsed = cup.isEmpty ? null : int.parse(cup);
     final clearQty = _isEdit && cup.isEmpty;
+    final lowTxt = _lowStock.text.trim();
+    int? lowParsed = lowTxt.isEmpty ? null : int.parse(lowTxt);
+    final clearLow = _isEdit && lowTxt.isEmpty;
     final cubit = context.read<MedicationsCubit>();
     try {
       if (_isEdit) {
@@ -331,7 +350,9 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
           scheduleWeekdays: _weekdaysToSave(),
           scheduleMonthDays: _monthDaysToSave(),
           quantityOnHand: qParsed,
+          lowStockThreshold: lowParsed,
           clearQuantity: clearQty,
+          clearLowStock: clearLow,
           clearPhoto: _clearPhoto,
           newImage: _newImage,
         );
@@ -347,6 +368,7 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
           scheduleWeekdays: _weekdaysToSave(),
           scheduleMonthDays: _monthDaysToSave(),
           quantityOnHand: qParsed,
+          lowStockThreshold: lowParsed,
           image: _newImage,
         );
       }
@@ -450,6 +472,16 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
             decoration: const InputDecoration(
               labelText: "Doses on hand (optional)",
               hintText: "Tablets/capsules left; leave empty for 28-day estimate",
+            ),
+            textInputAction: TextInputAction.next,
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _lowStock,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: "Low-stock threshold (optional)",
+              hintText: "Alert when on-hand count is at or below this (needs doses on hand set)",
             ),
             textInputAction: TextInputAction.next,
           ),

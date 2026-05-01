@@ -28,8 +28,10 @@ import "../features/tasks/view/tasks_screen.dart";
 import "../features/user/view/care_group_settings_screen.dart";
 import "../features/user/view/user_settings_care_groups_screen.dart";
 import "../features/user/view/user_settings_profile_screen.dart";
+import "../features/user/view/user_settings_alerts_screen.dart";
 import "../features/user/view/user_settings_homepage_screen.dart";
 import "../features/user/view/user_settings_security_screen.dart";
+import "../features/user/view/verify_alternate_email_screen.dart";
 import "../features/profile/cubit/profile_cubit.dart";
 import "../features/profile/cubit/profile_state.dart";
 import "../features/setup_wizard/view/setup_wizard_view.dart";
@@ -61,7 +63,9 @@ abstract final class AppRouteNames {
   static const userSettingsProfile = "userSettingsProfile";
   static const userSettingsCareGroups = "userSettingsCareGroups";
   static const userSettingsHomepage = "userSettingsHomepage";
+  static const userSettingsAlerts = "userSettingsAlerts";
   static const userSettingsSecurity = "userSettingsSecurity";
+  static const verifyEmail = "verifyEmail";
 }
 
 abstract final class AppRouter {
@@ -106,7 +110,8 @@ abstract final class AppRouter {
           }
           if (loc == "/sign-in" ||
               loc == "/register" ||
-              loc == "/invite-existing-user") {
+              loc == "/invite-existing-user" ||
+              loc == "/verify-email") {
             return null;
           }
           return "/sign-in";
@@ -146,6 +151,13 @@ abstract final class AppRouter {
         if (profileState is ProfileReady) {
           final profile = profileState.profile;
           final pr = profileState;
+
+          // Email verification links must reach [VerifyAlternateEmailScreen]
+          // even before the wizard is completed, so a brand-new user clicking
+          // their first verification link doesn't get bounced into setup.
+          if (loc == "/verify-email") {
+            return null;
+          }
 
           if (profile.needsWizard) {
             if (!loc.startsWith("/setup")) {
@@ -340,9 +352,22 @@ abstract final class AppRouter {
           builder: (context, state) => const UserSettingsHomepageScreen(),
         ),
         GoRoute(
+          path: "/user-settings/alerts",
+          name: AppRouteNames.userSettingsAlerts,
+          builder: (context, state) => const UserSettingsAlertsScreen(),
+        ),
+        GoRoute(
           path: "/user-settings/security",
           name: AppRouteNames.userSettingsSecurity,
           builder: (context, state) => const UserSettingsSecurityScreen(),
+        ),
+        GoRoute(
+          path: "/verify-email",
+          name: AppRouteNames.verifyEmail,
+          builder: (context, state) {
+            final token = state.uri.queryParameters["token"]?.trim() ?? "";
+            return VerifyAlternateEmailScreen(token: token);
+          },
         ),
       ],
     );

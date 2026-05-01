@@ -1,8 +1,16 @@
+import "dart:typed_data";
+
 import "package:cloud_firestore/cloud_firestore.dart";
+import "package:cloud_functions/cloud_functions.dart";
+import "package:firebase_storage/firebase_storage.dart";
 
 import "../../../core/firebase/firestore_remote_compat.dart";
 import "../../care_group/models/care_group_option.dart";
+import "../models/alternate_email.dart";
+import "../models/alternate_phone.dart";
 import "../models/home_sections_visibility.dart";
+import "../models/postal_address.dart";
+import "../models/user_alert_preferences.dart";
 import "../models/user_profile.dart";
 
 class UserRepository {
@@ -56,6 +64,100 @@ class UserRepository {
       String uid, Map<String, dynamic> data) async {
     if (!_firebaseReady) return;
     await _userRef(uid).update(data);
+  }
+
+  /// Replaces the address sub-map on `users/{uid}` (or removes it when
+  /// [address] is `null` / empty).
+  Future<void> setPostalAddress(String uid, PostalAddress? address) async {
+    if (!_firebaseReady) return;
+    if (address == null || address.isEmpty) {
+      await _userRef(uid).update({"address": FieldValue.delete()});
+      return;
+    }
+    await _userRef(uid).update({"address": address.toFirestore()});
+  }
+
+  /// Sets primary [phone] (or clears it when null/empty).
+  Future<void> setPrimaryPhone(String uid, String? phone) async {
+    if (!_firebaseReady) return;
+    final t = phone?.trim() ?? "";
+    await _userRef(uid).update({
+      "phone": t.isEmpty ? FieldValue.delete() : t,
+    });
+  }
+
+  /// Sets [fullName] (or clears it when null/empty).
+  Future<void> setFullName(String uid, String? fullName) async {
+    if (!_firebaseReady) return;
+    final t = fullName?.trim() ?? "";
+    await _userRef(uid).update({
+      "fullName": t.isEmpty ? FieldValue.delete() : t,
+    });
+  }
+
+  /// Persists the alternate-phones list on `users/{uid}.alternatePhones`.
+  /// Pass `[]` to clear; the repo serialises each entry through
+  /// [AlternatePhone.toFirestore] so server timestamps and label keys are
+  /// dropped when empty.
+  Future<void> setAlternatePhones(
+    String uid,
+    List<AlternatePhone> phones,
+  ) async {
+    if (!_firebaseReady) return;
+    final out = phones
+        .where((p) => p.normalized.isNotEmpty)
+        .map((p) => p.toFirestore())
+        .toList();
+    await _userRef(uid).update({"alternatePhones": out});
+  }
+
+  /// Persists the alternate-emails list on `users/{uid}.alternateEmails`.
+  /// Pass `[]` to clear. The Cloud Function `confirmAlternateEmailVerification`
+  /// is the canonical writer for [AlternateEmail.verified] = true; clients should
+  /// only call this method to add / remove / re-trigger entries.
+  Future<void> setAlternateEmails(
+    String uid,
+    List<AlternateEmail> emails,
+  ) async {
+    if (!_firebaseReady) return;
+    final out = emails
+        .where((e) => e.normalized.isNotEmpty)
+        .map((e) => e.toFirestore())
+        .toList();
+    await _userRef(uid).update({"alternateEmails": out});
+  }
+
+  /// Asks the `sendAlternateEmailVerification` Cloud Function to email a one-time
+  /// verification link to [emailAddress]. Throws on permission / config errors.
+  Future<void> requestAlternateEmailVerification({
+    required String emailAddress,
+  }) async {
+    if (!_firebaseReady) return;
+    final fn = FirebaseFunctions.instanceFor(region: "us-central1")
+        .httpsCallable("sendAlternateEmailVerification");
+    await fn.call({"email": emailAddress.trim().toLowerCase()});
+  }
+
+  /// Resolves a verification token (from the email link) into a verified
+  /// alt-email entry on the calling user's profile. Returns the address that
+  /// was verified, or throws on invalid / expired tokens.
+  Future<String> confirmAlternateEmailVerification({
+    required String token,
+  }) async {
+    if (!_firebaseReady) {
+      throw StateError("Firebase is not ready.");
+    }
+    final fn = FirebaseFunctions.instanceFor(region: "us-central1")
+        .httpsCallable("confirmAlternateEmailVerification");
+    final res = await fn.call({"token": token});
+    final data = res.data;
+    if (data is Map) {
+      final addr = data["email"];
+      if (addr is String && addr.isNotEmpty) {
+        return addr;
+      }
+    }
+    return "";
   }
 
   Future<void> setHomeSectionsVisibility({
@@ -118,6 +220,44 @@ class UserRepository {
         "avatarIndex": FieldValue.delete(),
       });
     }
+  }
+
+  static const int _profilePhotoMaxBytes = 8 * 1024 * 1024;
+
+  /// Uploads raw image bytes to Storage at `users/{uid}/profile_photo/…` and returns the download URL.
+  Future<String> uploadProfilePhoto({
+    required String uid,
+    required Uint8List bytes,
+    String? mimeType,
+  }) async {
+    if (!_firebaseReady) {
+      throw StateError("Firebase is not ready.");
+    }
+    if (bytes.isEmpty) {
+      throw ArgumentError("Choose an image file.");
+    }
+    if (bytes.length > _profilePhotoMaxBytes) {
+      throw ArgumentError("Photo must be 8 MB or smaller.");
+    }
+    final mt = mimeType?.toLowerCase().trim() ?? "";
+    String ext = "jpg";
+    String contentType = "image/jpeg";
+    if (mt.contains("png")) {
+      ext = "png";
+      contentType = "image/png";
+    } else if (mt.contains("webp")) {
+      ext = "webp";
+      contentType = "image/webp";
+    } else if (mt.contains("gif")) {
+      ext = "gif";
+      contentType = "image/gif";
+    }
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    final ref = FirebaseStorage.instance
+        .ref()
+        .child("users/$uid/profile_photo/${stamp}_photo.$ext");
+    await ref.putData(bytes, SettableMetadata(contentType: contentType));
+    return ref.getDownloadURL();
   }
 
   /// Adds a care recipient who does not use the app to [recipientIds] / [recipientProfiles]
@@ -514,10 +654,39 @@ class UserRepository {
   }
 
   UserProfile _map(String uid, Map<String, dynamic> data) {
+    final altEmails = <AlternateEmail>[];
+    final rawAltEmails = data["alternateEmails"];
+    if (rawAltEmails is List) {
+      for (final raw in rawAltEmails) {
+        final e = AlternateEmail.fromFirestore(raw);
+        if (e != null) {
+          altEmails.add(e);
+        }
+      }
+    }
+    final altPhones = <AlternatePhone>[];
+    final rawAltPhones = data["alternatePhones"];
+    if (rawAltPhones is List) {
+      for (final raw in rawAltPhones) {
+        final p = AlternatePhone.fromFirestore(raw);
+        if (p != null) {
+          altPhones.add(p);
+        }
+      }
+    }
     return UserProfile(
       uid: uid,
       email: (data["email"] as String?) ?? "",
       displayName: (data["displayName"] as String?) ?? "",
+      fullName: (data["fullName"] as String?)?.trim().isNotEmpty == true
+          ? (data["fullName"] as String).trim()
+          : null,
+      phone: (data["phone"] as String?)?.trim().isNotEmpty == true
+          ? (data["phone"] as String).trim()
+          : null,
+      address: PostalAddress.fromFirestore(data["address"]),
+      alternateEmails: altEmails,
+      alternatePhones: altPhones,
       photoUrl: data["photoUrl"] as String?,
       avatarIndex: (data["avatarIndex"] as num?)?.toInt(),
       simpleMode: data["simpleMode"] as bool? ?? false,
@@ -527,6 +696,22 @@ class UserRepository {
       wizardDraft: (data["wizardDraft"] as Map?)?.cast<String, dynamic>(),
       homeSections:
           HomeSectionsVisibility.fromFirestoreMap(data["homeSections"]),
+      alertPreferences:
+          UserAlertPreferences.fromFirestore(data["alertPreferences"]),
+    );
+  }
+
+  /// Persists `users/{uid}.alertPreferences` (merge).
+  Future<void> setAlertPreferences({
+    required String uid,
+    required UserAlertPreferences preferences,
+  }) async {
+    if (!_firebaseReady) {
+      return;
+    }
+    await _userRef(uid).set(
+      {"alertPreferences": preferences.toMap()},
+      SetOptions(merge: true),
     );
   }
 

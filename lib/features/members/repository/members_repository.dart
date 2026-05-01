@@ -8,7 +8,38 @@ import "../models/member_deletion_blockers.dart";
 class MembersRepository {
   MembersRepository({required bool firebaseReady}) : _firebaseReady = firebaseReady;
 
+  static const String _careGroupAdministratorRole = "care_group_administrator";
+
   final bool _firebaseReady;
+
+  static bool _rolesListContainsAdministrator(List<String> roles) {
+    return roles.contains(_careGroupAdministratorRole);
+  }
+
+  static List<String> _rolesFromMemberData(Map<String, dynamic> data) {
+    final raw = data["roles"];
+    if (raw is! List) {
+      return const [];
+    }
+    return raw.map((e) => e.toString()).toList();
+  }
+
+  /// Returns how many members would have [care_group_administrator] after updating [userId]’s roles.
+  static int _administratorCountAfterRoleChange({
+    required List<QueryDocumentSnapshot<Map<String, dynamic>>> memberDocs,
+    required String userId,
+    required List<String> newRolesForUser,
+  }) {
+    var n = 0;
+    for (final d in memberDocs) {
+      final roles =
+          d.id == userId ? newRolesForUser : _rolesFromMemberData(d.data());
+      if (_rolesListContainsAdministrator(roles)) {
+        n++;
+      }
+    }
+    return n;
+  }
 
   bool get isAvailable => _firebaseReady;
 
@@ -163,6 +194,8 @@ class MembersRepository {
   }
 
   /// Replaces the member’s role list. Principal carer can update any member; others cannot.
+  ///
+  /// Every care group must keep at least one [care_group_administrator].
   Future<void> updateMemberRoles({
     required String careGroupId,
     required String userId,
@@ -170,6 +203,17 @@ class MembersRepository {
   }) async {
     if (!_firebaseReady) return;
     final unique = <String>{...roles}.toList()..sort();
+    final snap = await _members(careGroupId).get();
+    final adminsAfter = _administratorCountAfterRoleChange(
+      memberDocs: snap.docs,
+      userId: userId,
+      newRolesForUser: unique,
+    );
+    if (adminsAfter < 1) {
+      throw StateError(
+        "This care team must have at least one care group administrator.",
+      );
+    }
     await _members(careGroupId).doc(userId).update({"roles": unique});
   }
 
@@ -243,11 +287,29 @@ class MembersRepository {
 
   /// Principal-only; fails if [userId] is not in `members/`. Use [UserRepository] to remove
   /// “offline” rows from [recipientProfiles].
+  ///
+  /// Removing a member must leave at least one [care_group_administrator] on the team.
   Future<void> deleteMemberDocument({
     required String careGroupId,
     required String userId,
   }) async {
     if (!_firebaseReady) return;
+    final snap = await _members(careGroupId).get();
+    var adminsRemaining = 0;
+    for (final d in snap.docs) {
+      if (d.id == userId) {
+        continue;
+      }
+      if (_rolesListContainsAdministrator(_rolesFromMemberData(d.data()))) {
+        adminsRemaining++;
+      }
+    }
+    if (adminsRemaining < 1) {
+      throw StateError(
+        "This care team must have at least one care group administrator. "
+        "Promote someone else before removing this person.",
+      );
+    }
     await _members(careGroupId).doc(userId).delete();
   }
 }

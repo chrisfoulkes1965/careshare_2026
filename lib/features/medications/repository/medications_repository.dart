@@ -6,6 +6,7 @@ import "package:firebase_auth/firebase_auth.dart";
 import "package:firebase_storage/firebase_storage.dart";
 
 import "../models/care_group_medication.dart";
+import "../models/medication_batch_prep_doc.dart";
 import "../../tasks/repository/platform_file_read_io.dart" if (dart.library.html) "../../tasks/repository/platform_file_read_web.dart" as platform_file_read;
 
 Map<String, dynamic> _scheduleFields({
@@ -46,6 +47,68 @@ class MedicationsRepository {
         .collection("careGroups")
         .doc(careGroupId)
         .collection("medications");
+  }
+
+  DocumentReference<Map<String, dynamic>> _medicationBatchPrepDoc(String careGroupId) {
+    return FirebaseFirestore.instance
+        .collection("careGroups")
+        .doc(careGroupId)
+        .collection("medicationBatchPrep")
+        .doc("current");
+  }
+
+  /// Monday date (YYYY-MM-DD) identifying the batch-prep week in local time.
+  static String currentBatchPrepWeekKey(DateTime localNow) {
+    final day = DateTime(localNow.year, localNow.month, localNow.day);
+    final monday = day.subtract(Duration(days: (day.weekday + 6) % 7));
+    return "${monday.year}-${monday.month.toString().padLeft(2, "0")}-${monday.day.toString().padLeft(2, "0")}";
+  }
+
+  Stream<MedicationBatchPrepDoc> watchMedicationBatchPrep(String careGroupId) {
+    if (!_firebaseReady) {
+      return const Stream.empty();
+    }
+    return _medicationBatchPrepDoc(careGroupId).snapshots().map(
+      (s) {
+        if (!s.exists || s.data() == null) {
+          return MedicationBatchPrepDoc(
+            weekKey: currentBatchPrepWeekKey(DateTime.now()),
+            completedMedicationIds: const [],
+          );
+        }
+        return MedicationBatchPrepDoc.fromMap(s.data()!);
+      },
+    );
+  }
+
+  Future<void> saveMedicationBatchPrep({
+    required String careGroupId,
+    required String weekKey,
+    required List<String> completedMedicationIds,
+  }) async {
+    if (!_firebaseReady) {
+      return Future.error(StateError("Firebase is not available."));
+    }
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      throw StateError("Not signed in.");
+    }
+    final wk = weekKey.trim();
+    if (wk.isEmpty) {
+      throw ArgumentError("weekKey required.");
+    }
+    final unique = completedMedicationIds.where((e) => e.isNotEmpty).toSet().toList()..sort();
+    return _withOpTimeout(
+      _medicationBatchPrepDoc(careGroupId).set(
+        {
+          "weekKey": wk,
+          "completedMedicationIds": unique,
+          "updatedBy": uid,
+          "updatedAt": FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      ),
+    );
   }
 
   Stream<List<CareGroupMedication>> watchMedications(String careGroupId) {
@@ -147,6 +210,7 @@ class MedicationsRepository {
     List<int> scheduleWeekdays = const [],
     List<int> scheduleMonthDays = const [],
     int? quantityOnHand,
+    int? lowStockThreshold,
     PlatformFile? image,
     List<String> alsoApplyPhotoToMedicationIds = const [],
   }) {
@@ -165,6 +229,7 @@ class MedicationsRepository {
       scheduleWeekdays: scheduleWeekdays,
       scheduleMonthDays: scheduleMonthDays,
       quantityOnHand: quantityOnHand,
+      lowStockThreshold: lowStockThreshold,
       image: image,
       alsoApplyPhotoToMedicationIds: alsoApplyPhotoToMedicationIds,
     ));
@@ -182,6 +247,7 @@ class MedicationsRepository {
     List<int> scheduleWeekdays = const [],
     List<int> scheduleMonthDays = const [],
     int? quantityOnHand,
+    int? lowStockThreshold,
     PlatformFile? image,
     List<String> alsoApplyPhotoToMedicationIds = const [],
   }) async {
@@ -210,6 +276,9 @@ class MedicationsRepository {
     };
     if (quantityOnHand != null) {
       data["quantityOnHand"] = quantityOnHand.clamp(0, 0x3fffffff);
+    }
+    if (lowStockThreshold != null) {
+      data["lowStockThreshold"] = lowStockThreshold.clamp(0, 0x3fffffff);
     }
     final ref = await _medications(careGroupId).add(data);
     final id = ref.id;
@@ -251,7 +320,9 @@ class MedicationsRepository {
     List<int> scheduleWeekdays = const [],
     List<int> scheduleMonthDays = const [],
     int? quantityOnHand,
+    int? lowStockThreshold,
     bool clearQuantity = false,
+    bool clearLowStock = false,
     bool clearPhoto = false,
     PlatformFile? newImage,
     List<String> alsoApplyPhotoToMedicationIds = const [],
@@ -272,7 +343,9 @@ class MedicationsRepository {
       scheduleWeekdays: scheduleWeekdays,
       scheduleMonthDays: scheduleMonthDays,
       quantityOnHand: quantityOnHand,
+      lowStockThreshold: lowStockThreshold,
       clearQuantity: clearQuantity,
+      clearLowStock: clearLowStock,
       clearPhoto: clearPhoto,
       newImage: newImage,
       alsoApplyPhotoToMedicationIds: alsoApplyPhotoToMedicationIds,
@@ -292,7 +365,9 @@ class MedicationsRepository {
     List<int> scheduleWeekdays = const [],
     List<int> scheduleMonthDays = const [],
     int? quantityOnHand,
+    int? lowStockThreshold,
     bool clearQuantity = false,
+    bool clearLowStock = false,
     bool clearPhoto = false,
     PlatformFile? newImage,
     List<String> alsoApplyPhotoToMedicationIds = const [],
@@ -322,6 +397,11 @@ class MedicationsRepository {
     } else if (quantityOnHand != null) {
       patch["quantityOnHand"] = quantityOnHand.clamp(0, 0x3fffffff);
     }
+    if (clearLowStock) {
+      patch["lowStockThreshold"] = FieldValue.delete();
+    } else if (lowStockThreshold != null) {
+      patch["lowStockThreshold"] = lowStockThreshold.clamp(0, 0x3fffffff);
+    }
     await _medications(careGroupId).doc(medicationId).update(patch);
     if (newImage != null) {
       final url = await _uploadPhotoIfAny(
@@ -346,17 +426,73 @@ class MedicationsRepository {
     }
   }
 
-  /// One dose from each listed medication: decrements by 1, materializing implicit 28d stock.
-  Future<void> applyDoseDecrements({
+  /// Bulk stock-take: per medication, write the user-entered count or clear it
+  /// (back to the implicit 28-day estimate) when the entry is `null`.
+  /// Entries with no change versus current state should be omitted by callers
+  /// to keep the batch small.
+  Future<void> applyStockTake({
     required String careGroupId,
-    required Set<String> medicationIds,
+    required Map<String, int?> entries,
   }) {
     if (!_firebaseReady) {
       return Future.error(StateError("Firebase is not available."));
     }
+    if (entries.isEmpty) {
+      return Future.value();
+    }
+    return _withOpTimeout(_applyStockTakeWork(
+      careGroupId: careGroupId,
+      entries: entries,
+    ));
+  }
+
+  Future<void> _applyStockTakeWork({
+    required String careGroupId,
+    required Map<String, int?> entries,
+  }) async {
+    final ids = entries.keys.where((id) => id.isNotEmpty).toList();
+    if (ids.isEmpty) {
+      return;
+    }
+    const chunk = 400;
+    for (var i = 0; i < ids.length; i += chunk) {
+      final batch = FirebaseFirestore.instance.batch();
+      final slice = ids.sublist(
+        i,
+        i + chunk > ids.length ? ids.length : i + chunk,
+      );
+      for (final id in slice) {
+        final v = entries[id];
+        final ref = _medications(careGroupId).doc(id);
+        if (v == null) {
+          batch.update(ref, {"quantityOnHand": FieldValue.delete()});
+        } else {
+          batch.update(ref, {"quantityOnHand": v.clamp(0, 0x3fffffff)});
+        }
+      }
+      await batch.commit();
+    }
+  }
+
+  /// One dose from each listed medication: writes a [doseLogs] entry and decrements stock by 1.
+  Future<void> applyDoseDecrements({
+    required String careGroupId,
+    required Set<String> medicationIds,
+    String slotKey = "",
+  }) {
+    if (!_firebaseReady) {
+      return Future.error(StateError("Firebase is not available."));
+    }
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      return Future.error(StateError("Not signed in."));
+    }
     return _withOpTimeout(
       FirebaseFirestore.instance.runTransaction((t) async {
         for (final id in medicationIds) {
+          if (id.isEmpty) {
+            continue;
+          }
           final r = _medications(careGroupId).doc(id);
           final s = await t.get(r);
           if (!s.exists) {
@@ -371,6 +507,15 @@ class MedicationsRepository {
           }
           final start = m.effectiveDosesInHand;
           final next = (start - 1).clamp(0, 0x3fffffff);
+          final logRef = r.collection("doseLogs").doc();
+          final logData = <String, dynamic>{
+            "takenAt": FieldValue.serverTimestamp(),
+            "loggedBy": uid,
+          };
+          if (slotKey.isNotEmpty) {
+            logData["slotKey"] = slotKey;
+          }
+          t.set(logRef, logData);
           t.update(r, {"quantityOnHand": next});
         }
       }),

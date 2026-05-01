@@ -101,7 +101,8 @@ class _MedicationDoseConfirmScreenState extends State<MedicationDoseConfirmScree
         children: [
           const Text(
             "Confirm you took the scheduled dose for each item below. "
-            "On-hand doses will go down by one for each (using your entered quantity, or the 28-day default if none).",
+            "On-hand doses will go down by one for each (using your entered quantity, or the 28-day default if none). "
+            "Each confirmation is recorded as a dose log for your care team (separate from prescription settings).",
             style: TextStyle(fontSize: 14),
           ),
           const SizedBox(height: 16),

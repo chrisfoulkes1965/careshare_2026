@@ -153,6 +153,91 @@ service cloud.firestore {
         || hasRole(team, request.auth.uid, 'power_of_attorney');
     }
 
+    /// Plain [carer] role only (not principal, POA, or care group admin) — inventory / dose logging.
+    function isCarerOnlyMember(careGroupId) {
+      let team = careTeamId(careGroupId);
+      return memberExists(team, request.auth.uid)
+        && hasRole(team, request.auth.uid, 'carer')
+        && !hasAnyRole(team, request.auth.uid, [
+          'principal_carer',
+          'power_of_attorney',
+          'care_group_administrator',
+        ]);
+    }
+
+    function medicationPrincipalPatchKeys() {
+      return [
+        'name', 'dosage', 'instructions', 'notes', 'photoUrl',
+        'reminderEnabled', 'reminderTimes', 'reminderSchedule', 'reminderWeekdays', 'reminderMonthDays',
+        'quantityOnHand', 'lowStockThreshold',
+      ];
+    }
+
+    function medicationCreatedStable() {
+      return request.resource.data.createdBy == resource.data.createdBy;
+    }
+
+    function medicationPrincipalUpdateOk(careGroupId) {
+      return isPrincipalOrPoaForCareGroup(careGroupId)
+        && diffKeys().hasOnly(medicationPrincipalPatchKeys())
+        && medicationCreatedStable()
+        && request.resource.data.name is string
+        && request.resource.data.name.size() >= 1
+        && request.resource.data.name.size() <= 200
+        && (!request.resource.data.keys().hasAny(['dosage']) || (
+          request.resource.data.dosage is string && request.resource.data.dosage.size() <= 4000
+        ))
+        && (!request.resource.data.keys().hasAny(['instructions']) || (
+          request.resource.data.instructions is string && request.resource.data.instructions.size() <= 4000
+        ))
+        && (!request.resource.data.keys().hasAny(['notes']) || (
+          request.resource.data.notes is string && request.resource.data.notes.size() <= 4000
+        ))
+        && (!request.resource.data.keys().hasAny(['photoUrl']) || (
+          request.resource.data.photoUrl is string && request.resource.data.photoUrl.size() <= 2048
+        ))
+        && (!request.resource.data.keys().hasAny(['reminderEnabled']) || request.resource.data.reminderEnabled is bool)
+        && (!request.resource.data.keys().hasAny(['reminderTimes']) || request.resource.data.reminderTimes is list)
+        && (!request.resource.data.keys().hasAny(['reminderSchedule']) || (
+          request.resource.data.reminderSchedule is string
+          && request.resource.data.reminderSchedule in ['daily', 'weekly', 'monthly']
+        ))
+        && (!request.resource.data.keys().hasAny(['reminderWeekdays']) || request.resource.data.reminderWeekdays is list)
+        && (!request.resource.data.keys().hasAny(['reminderMonthDays']) || request.resource.data.reminderMonthDays is list)
+        && (!request.resource.data.keys().hasAny(['quantityOnHand']) || (
+          request.resource.data.quantityOnHand is int
+          && request.resource.data.quantityOnHand >= 0
+          && request.resource.data.quantityOnHand < 2000000000
+        ))
+        && (!request.resource.data.keys().hasAny(['lowStockThreshold']) || (
+          request.resource.data.lowStockThreshold is int
+          && request.resource.data.lowStockThreshold >= 0
+          && request.resource.data.lowStockThreshold < 2000000000
+        ));
+    }
+
+    function medicationCarerQuantityPatchOk(careGroupId) {
+      return isCarerOnlyMember(careGroupId)
+        && diffKeys().hasOnly(['quantityOnHand'])
+        && medicationCreatedStable()
+        && (
+          !request.resource.data.keys().hasAny(['quantityOnHand'])
+          || (
+            request.resource.data.quantityOnHand is int
+            && request.resource.data.quantityOnHand >= 0
+            && request.resource.data.quantityOnHand < 2000000000
+          )
+        );
+    }
+
+    function medicationCreateKeysOk() {
+      return request.resource.data.keys().hasOnly([
+        'name', 'dosage', 'instructions', 'notes', 'photoUrl',
+        'reminderEnabled', 'reminderTimes', 'reminderSchedule', 'reminderWeekdays', 'reminderMonthDays',
+        'quantityOnHand', 'lowStockThreshold', 'createdBy', 'createdAt',
+      ]);
+    }
+
     function canAuthorCareGroupNotes(careGroupId) {
       let team = careTeamId(careGroupId);
       return hasAnyRole(team, request.auth.uid, [
@@ -442,9 +527,88 @@ service cloud.firestore {
       match /medications/{medicationId} {
         allow read: if isCareGroupMember(careGroupId) && canReadMedicationList(careGroupId);
 
-        allow create: if isPrincipalOrPoaForCareGroup(careGroupId);
-        // Carers may log doses / inventory; principal+POA retain full control.
-        allow update: if isCareGroupMember(careGroupId) && isCarerOrPrincipalForCareGroup(careGroupId);
+        allow create: if isPrincipalOrPoaForCareGroup(careGroupId)
+          && medicationCreateKeysOk()
+          && request.resource.data.keys().hasAll(['name', 'createdBy', 'createdAt'])
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.name is string
+          && request.resource.data.name.size() >= 1
+          && request.resource.data.name.size() <= 200
+          && (!request.resource.data.keys().hasAny(['dosage']) || (
+            request.resource.data.dosage is string && request.resource.data.dosage.size() <= 4000
+          ))
+          && (!request.resource.data.keys().hasAny(['instructions']) || (
+            request.resource.data.instructions is string && request.resource.data.instructions.size() <= 4000
+          ))
+          && (!request.resource.data.keys().hasAny(['notes']) || (
+            request.resource.data.notes is string && request.resource.data.notes.size() <= 4000
+          ))
+          && (!request.resource.data.keys().hasAny(['photoUrl']) || (
+            request.resource.data.photoUrl is string && request.resource.data.photoUrl.size() <= 2048
+          ))
+          && (!request.resource.data.keys().hasAny(['reminderEnabled']) || request.resource.data.reminderEnabled is bool)
+          && (!request.resource.data.keys().hasAny(['reminderTimes']) || request.resource.data.reminderTimes is list)
+          && (!request.resource.data.keys().hasAny(['reminderSchedule']) || (
+            request.resource.data.reminderSchedule is string
+            && request.resource.data.reminderSchedule in ['daily', 'weekly', 'monthly']
+          ))
+          && (!request.resource.data.keys().hasAny(['reminderWeekdays']) || request.resource.data.reminderWeekdays is list)
+          && (!request.resource.data.keys().hasAny(['reminderMonthDays']) || request.resource.data.reminderMonthDays is list)
+          && (!request.resource.data.keys().hasAny(['quantityOnHand']) || (
+            request.resource.data.quantityOnHand is int
+            && request.resource.data.quantityOnHand >= 0
+            && request.resource.data.quantityOnHand < 2000000000
+          ))
+          && (!request.resource.data.keys().hasAny(['lowStockThreshold']) || (
+            request.resource.data.lowStockThreshold is int
+            && request.resource.data.lowStockThreshold >= 0
+            && request.resource.data.lowStockThreshold < 2000000000
+          ));
+
+        allow update: if isCareGroupMember(careGroupId) && (
+          medicationPrincipalUpdateOk(careGroupId)
+          || medicationCarerQuantityPatchOk(careGroupId)
+        );
+
+        allow delete: if isPrincipalOrPoaForCareGroup(careGroupId);
+
+        match /doseLogs/{logId} {
+          allow read: if isCareGroupMember(careGroupId) && canReadMedicationList(careGroupId);
+
+          allow create: if isCareGroupMember(careGroupId)
+            && isCarerOrPrincipalForCareGroup(careGroupId)
+            && request.resource.data.keys().hasAll(['takenAt', 'loggedBy'])
+            && request.resource.data.loggedBy == request.auth.uid
+            && request.resource.data.takenAt is timestamp
+            && request.resource.data.keys().hasOnly(['takenAt', 'loggedBy', 'slotKey'])
+            && (!request.resource.data.keys().hasAny(['slotKey'])
+              || (request.resource.data.slotKey is string && request.resource.data.slotKey.size() <= 200));
+
+          allow update, delete: if false;
+        }
+      }
+
+      match /medicationBatchPrep/{prepId} {
+        allow read: if isCareGroupMember(careGroupId) && canReadMedicationList(careGroupId);
+
+        allow create: if isCareGroupMember(careGroupId)
+          && isCarerOrPrincipalForCareGroup(careGroupId)
+          && request.resource.data.keys().hasAll(['weekKey', 'completedMedicationIds', 'updatedBy'])
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.weekKey is string
+          && request.resource.data.weekKey.size() <= 16
+          && request.resource.data.completedMedicationIds is list
+          && request.resource.data.keys().hasOnly(['weekKey', 'completedMedicationIds', 'updatedBy', 'updatedAt']);
+
+        allow update: if isCareGroupMember(careGroupId)
+          && isCarerOrPrincipalForCareGroup(careGroupId)
+          && request.resource.data.updatedBy == request.auth.uid
+          && diffKeys().hasOnly(['weekKey', 'completedMedicationIds', 'updatedBy', 'updatedAt'])
+          && (!request.resource.data.keys().hasAny(['weekKey'])
+            || (request.resource.data.weekKey is string && request.resource.data.weekKey.size() <= 16))
+          && (!request.resource.data.keys().hasAny(['completedMedicationIds'])
+            || request.resource.data.completedMedicationIds is list);
+
         allow delete: if isPrincipalOrPoaForCareGroup(careGroupId);
       }
 

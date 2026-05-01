@@ -13,6 +13,8 @@ import "../repository/medication_care_group_settings_repository.dart";
 import "../repository/medications_repository.dart";
 import "medication_editor_sheet.dart";
 import "medication_inventory_settings_sheet.dart";
+import "medication_batch_prep_sheet.dart";
+import "medication_stock_take_sheet.dart";
 
 class MedicationsScreen extends StatelessWidget {
   const MedicationsScreen({super.key});
@@ -45,6 +47,7 @@ class MedicationsScreen extends StatelessWidget {
           key: ObjectKey(cg),
           create: (context) => MedicationsCubit(
             repository: context.read<MedicationsRepository>(),
+            settingsRepository: context.read<MedicationCareGroupSettingsRepository>(),
             careGroupId: cg,
           )..subscribe(),
           child: _MedicationsView(careGroupId: cg),
@@ -101,6 +104,13 @@ class _MedicationsViewState extends State<_MedicationsView> {
     List<CareGroupMedication> list,
     MedicationInventoryCareGroupSettings settings,
   ) {
+    final profileState = context.read<ProfileCubit>().state;
+    if (profileState is! ProfileReady) {
+      return;
+    }
+    if (!profileState.profile.resolvedAlertPreferences.medicationReorder.inApp) {
+      return;
+    }
     if (!shouldNudgeBatchReorder(list, settings)) {
       return;
     }
@@ -177,6 +187,25 @@ class _MedicationsViewState extends State<_MedicationsView> {
           },
         ),
         actions: [
+          if (careGroupId != null && careGroupId.isNotEmpty && state is MedicationsDisplay) ...[
+            IconButton(
+              icon: const Icon(Icons.checklist_outlined),
+              tooltip: "Weekly batch prep",
+              onPressed: () => MedicationBatchPrepSheet.show(
+                context,
+                careGroupId: careGroupId,
+                medications: state.list,
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.fact_check_outlined),
+              tooltip: "Stock take",
+              onPressed: () => MedicationStockTakeSheet.show(
+                context,
+                medications: state.list,
+              ),
+            ),
+          ],
           if (careGroupId != null && careGroupId.isNotEmpty)
             IconButton(
               icon: const Icon(Icons.inventory_2_outlined),
@@ -273,6 +302,17 @@ class _MedCard extends StatelessWidget {
               Text(
                 m.inventorySummaryLine,
                 style: Theme.of(context).textTheme.labelSmall,
+              ),
+            ],
+            if (m.isLowStock) ...[
+              const SizedBox(height: 4),
+              Text(
+                "Low stock (${m.quantityOnHand} left, threshold ${m.lowStockThreshold})",
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.error,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ],
             if (m.instructions.isNotEmpty) Text(m.instructions, maxLines: 2, overflow: TextOverflow.ellipsis),

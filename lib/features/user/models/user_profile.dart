@@ -1,6 +1,10 @@
 import "package:equatable/equatable.dart";
 
+import "alternate_email.dart";
+import "alternate_phone.dart";
 import "home_sections_visibility.dart";
+import "postal_address.dart";
+import "user_alert_preferences.dart";
 
 final class UserProfile extends Equatable {
   /// Builds a lightweight profile from Firebase Auth-style session fields
@@ -24,6 +28,11 @@ final class UserProfile extends Equatable {
     required this.uid,
     required this.email,
     required this.displayName,
+    this.fullName,
+    this.phone,
+    this.address,
+    this.alternateEmails = const [],
+    this.alternatePhones = const [],
     this.photoUrl,
     this.avatarIndex,
     this.simpleMode = false,
@@ -32,11 +41,33 @@ final class UserProfile extends Equatable {
     this.activeCareGroupId,
     this.wizardDraft,
     this.homeSections,
+    this.alertPreferences,
   });
 
   final String uid;
   final String email;
+
+  /// Short display name shown in chat / members lists; this is the display name
+  /// that already existed before the profile expansion.
   final String displayName;
+
+  /// Optional legal full name (e.g. "Christopher Foulkes"). Distinct from
+  /// [displayName] which may be a nickname.
+  final String? fullName;
+
+  /// Primary phone number (the user's main mobile / contact number).
+  final String? phone;
+
+  /// Optional postal address.
+  final PostalAddress? address;
+
+  /// Additional email addresses owned by the user (verified via Resend link).
+  final List<AlternateEmail> alternateEmails;
+
+  /// Additional phone numbers (SMS verification not yet wired — flagged
+  /// unverified, possibly tagged non-mobile if the user opted to skip).
+  final List<AlternatePhone> alternatePhones;
+
   final String? photoUrl;
   final int? avatarIndex;
   final bool simpleMode;
@@ -48,13 +79,24 @@ final class UserProfile extends Equatable {
   /// When absent, treat as “show all” sections on the home landing page.
   final HomeSectionsVisibility? homeSections;
 
+  /// Optional overrides for alert delivery (email, in-app, push, SMS).
+  final UserAlertPreferences? alertPreferences;
+
   bool get needsWizard => !wizardCompleted && !wizardSkipped;
 
   HomeSectionsVisibility get resolvedHomeSections =>
       homeSections ?? const HomeSectionsVisibility();
 
+  UserAlertPreferences get resolvedAlertPreferences =>
+      alertPreferences ?? const UserAlertPreferences();
+
   UserProfile copyWith({
     String? displayName,
+    String? fullName,
+    String? phone,
+    PostalAddress? address,
+    List<AlternateEmail>? alternateEmails,
+    List<AlternatePhone>? alternatePhones,
     String? photoUrl,
     int? avatarIndex,
     bool? simpleMode,
@@ -63,11 +105,17 @@ final class UserProfile extends Equatable {
     String? activeCareGroupId,
     Map<String, dynamic>? wizardDraft,
     HomeSectionsVisibility? homeSections,
+    UserAlertPreferences? alertPreferences,
   }) {
     return UserProfile(
       uid: uid,
       email: email,
       displayName: displayName ?? this.displayName,
+      fullName: fullName ?? this.fullName,
+      phone: phone ?? this.phone,
+      address: address ?? this.address,
+      alternateEmails: alternateEmails ?? this.alternateEmails,
+      alternatePhones: alternatePhones ?? this.alternatePhones,
       photoUrl: photoUrl ?? this.photoUrl,
       avatarIndex: avatarIndex ?? this.avatarIndex,
       simpleMode: simpleMode ?? this.simpleMode,
@@ -76,6 +124,7 @@ final class UserProfile extends Equatable {
       activeCareGroupId: activeCareGroupId ?? this.activeCareGroupId,
       wizardDraft: wizardDraft ?? this.wizardDraft,
       homeSections: homeSections ?? this.homeSections,
+      alertPreferences: alertPreferences ?? this.alertPreferences,
     );
   }
 
@@ -84,6 +133,11 @@ final class UserProfile extends Equatable {
         uid,
         email,
         displayName,
+        fullName,
+        phone,
+        address,
+        alternateEmails,
+        alternatePhones,
         photoUrl,
         avatarIndex,
         simpleMode,
@@ -92,5 +146,6 @@ final class UserProfile extends Equatable {
         activeCareGroupId,
         wizardDraft,
         homeSections,
+        alertPreferences,
       ];
 }

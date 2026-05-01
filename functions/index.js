@@ -371,3 +371,7 @@ const {syncToGoogleCalendar} = require("./gcal/syncToGoogleCalendar");
 const {syncInboundGoogleCalendar} = require("./gcal/syncInboundGoogleCalendar");
 exports.syncToGoogleCalendar = syncToGoogleCalendar;
 exports.syncInboundGoogleCalendar = syncInboundGoogleCalendar;
+
+const altEmail = require("./altEmailVerification");
+exports.sendAlternateEmailVerification = altEmail.sendAlternateEmailVerification;
+exports.confirmAlternateEmailVerification = altEmail.confirmAlternateEmailVerification;

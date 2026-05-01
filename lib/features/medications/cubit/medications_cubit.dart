@@ -5,20 +5,40 @@ import "package:flutter_bloc/flutter_bloc.dart";
 
 import "../../../core/medication_reminders/medication_notification_service.dart";
 import "../models/care_group_medication.dart";
+import "../models/medication_care_group_settings.dart";
+import "../repository/medication_care_group_settings_repository.dart";
 import "../repository/medications_repository.dart";
 import "medications_state.dart";
 
 final class MedicationsCubit extends Cubit<MedicationsState> {
   MedicationsCubit({
     required MedicationsRepository repository,
+    required MedicationCareGroupSettingsRepository settingsRepository,
     required this.careGroupId,
   })  : _repository = repository,
+        _settingsRepository = settingsRepository,
         super(const MedicationsInitial());
 
   final MedicationsRepository _repository;
+  final MedicationCareGroupSettingsRepository _settingsRepository;
   final String careGroupId;
 
   StreamSubscription<List<CareGroupMedication>>? _sub;
+  StreamSubscription<MedicationInventoryCareGroupSettings>? _settingsSub;
+  List<CareGroupMedication> _lastMedsForNotify = const [];
+
+  Future<void> _syncLocalNotifications() async {
+    if (!_repository.isAvailable) {
+      return;
+    }
+    final settings = await _settingsRepository.getSettings(careGroupId);
+    await MedicationNotificationService.instance.syncMedications(
+      careGroupId,
+      _lastMedsForNotify,
+      quietHoursStartMinute: settings.quietHoursEnabled ? settings.quietHoursStartMinute : null,
+      quietHoursEndMinute: settings.quietHoursEnabled ? settings.quietHoursEndMinute : null,
+    );
+  }
 
   void subscribe() {
     if (!_repository.isAvailable) {
@@ -27,18 +47,21 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
     }
     emit(const MedicationsLoading());
     unawaited(_sub?.cancel());
+    unawaited(_settingsSub?.cancel());
+    _settingsSub = _settingsRepository.watchSettings(careGroupId).listen(
+      (_) {
+        Future(_syncLocalNotifications);
+      },
+    );
     _sub = _repository.watchMedications(careGroupId).listen(
       (list) {
+        _lastMedsForNotify = list;
         if (list.isEmpty) {
           emit(const MedicationsEmpty());
         } else {
           emit(MedicationsDisplay(list: list));
         }
-        // Defer: local notification sync can block the platform channel on some OSes; never run in the
-        // same turn as the Firestore write that produced this snapshot.
-        Future(
-          () => MedicationNotificationService.instance.syncMedications(careGroupId, list),
-        );
+        Future(_syncLocalNotifications);
       },
       onError: (Object e) => emit(MedicationsFailure(e.toString())),
     );
@@ -55,6 +78,7 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
     List<int> scheduleWeekdays = const [],
     List<int> scheduleMonthDays = const [],
     int? quantityOnHand,
+    int? lowStockThreshold,
     PlatformFile? image,
     List<String> alsoApplyPhotoToMedicationIds = const [],
   }) {
@@ -70,6 +94,7 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
       scheduleWeekdays: scheduleWeekdays,
       scheduleMonthDays: scheduleMonthDays,
       quantityOnHand: quantityOnHand,
+      lowStockThreshold: lowStockThreshold,
       image: image,
       alsoApplyPhotoToMedicationIds: alsoApplyPhotoToMedicationIds,
     );
@@ -87,7 +112,9 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
     List<int> scheduleWeekdays = const [],
     List<int> scheduleMonthDays = const [],
     int? quantityOnHand,
+    int? lowStockThreshold,
     bool clearQuantity = false,
+    bool clearLowStock = false,
     bool clearPhoto = false,
     PlatformFile? newImage,
     List<String> alsoApplyPhotoToMedicationIds = const [],
@@ -105,7 +132,9 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
       scheduleWeekdays: scheduleWeekdays,
       scheduleMonthDays: scheduleMonthDays,
       quantityOnHand: quantityOnHand,
+      lowStockThreshold: lowStockThreshold,
       clearQuantity: clearQuantity,
+      clearLowStock: clearLowStock,
       clearPhoto: clearPhoto,
       newImage: newImage,
       alsoApplyPhotoToMedicationIds: alsoApplyPhotoToMedicationIds,
@@ -119,9 +148,19 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
     );
   }
 
+  /// Batch update doses-on-hand from a stock take. Use `null` in [entries] to
+  /// clear an entry back to the implicit 28-day estimate.
+  Future<void> applyStockTake(Map<String, int?> entries) {
+    return _repository.applyStockTake(
+      careGroupId: careGroupId,
+      entries: entries,
+    );
+  }
+
   @override
   Future<void> close() async {
     await _sub?.cancel();
+    await _settingsSub?.cancel();
     return super.close();
   }
 }

@@ -7,6 +7,7 @@ import "../../auth/bloc/auth_state.dart";
 import "../../care_group/models/care_group_option.dart";
 import "../../invitations/repository/invitation_repository.dart";
 import "../../user/models/home_sections_visibility.dart";
+import "../../user/models/user_alert_preferences.dart";
 import "../../user/models/user_profile.dart";
 import "../../user/repository/user_repository.dart";
 import "../../../core/invite/pending_invitation_store.dart";
@@ -154,6 +155,29 @@ final class ProfileCubit extends Cubit<ProfileState> {
       await _userRepository.setHomeSectionsVisibility(
         uid: snapshot.uid,
         visibility: visibility,
+      );
+      await _load(snapshot);
+    } catch (e) {
+      if (previous is ProfileReady) {
+        emit(previous);
+      } else {
+        emit(ProfileError(e.toString()));
+      }
+      rethrow;
+    }
+  }
+
+  /// Persists which channels receive which alerts (`users/{uid}.alertPreferences`).
+  Future<void> setAlertPreferences(UserAlertPreferences preferences) async {
+    final snapshot = _authSnapshotOrNull();
+    if (snapshot == null) {
+      return;
+    }
+    final previous = state;
+    try {
+      await _userRepository.setAlertPreferences(
+        uid: snapshot.uid,
+        preferences: preferences,
       );
       await _load(snapshot);
     } catch (e) {

@@ -840,7 +840,7 @@ class _AvatarStep extends StatelessWidget {
           Text("Choose an avatar", style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 8),
           Text(
-            "Pick an avatar from the set below. You can upload a photo later in your profile.",
+            "Pick an avatar from the set below, or take or choose a photo later under Profile & avatar.",
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(color: AppColors.grey500),
           ),
           const SizedBox(height: 12),

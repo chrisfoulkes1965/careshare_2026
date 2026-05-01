@@ -65,6 +65,7 @@ class _CareShareAppState extends State<CareShareApp>
           CaresharePushService.instance.bind(
             router: _router!,
             userRepository: context.read<UserRepository>(),
+            profileCubit: profileCubit,
           );
         }
         if (_router != null && !_doseNavRegistered) {

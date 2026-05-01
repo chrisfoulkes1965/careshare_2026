@@ -8,6 +8,9 @@ import "package:go_router/go_router.dart";
 import "package:shared_preferences/shared_preferences.dart";
 
 import "../medication_reminders/medication_notification_service.dart";
+import "../../features/medications/view/medication_dose_route_args.dart";
+import "../../features/profile/cubit/profile_cubit.dart";
+import "../../features/profile/cubit/profile_state.dart";
 import "../../features/user/repository/user_repository.dart";
 
 const _kInstallKey = "careshare_device_installation_id";
@@ -18,6 +21,7 @@ final class CaresharePushService {
   static final CaresharePushService instance = CaresharePushService._();
 
   UserRepository? _userRepository;
+  ProfileCubit? _profileCubit;
   GoRouter? _router;
   StreamSubscription<RemoteMessage?>? _openedSub;
   StreamSubscription<RemoteMessage>? _foregroundSub;
@@ -45,6 +49,38 @@ final class CaresharePushService {
 
   static String _buildChatPayload(String careGroupId, String channelId) {
     return "chat|$careGroupId|$channelId";
+  }
+
+  static String _buildMedicationPayload(String careGroupId, List<String> medicationIds) {
+    final s = medicationIds.where((e) => e.isNotEmpty).toList()..sort();
+    return "dose|$careGroupId|${s.join(",")}";
+  }
+
+  void _openMedicationFromData(Map<String, dynamic> data) {
+    if (data["type"]?.toString() != "medication") {
+      return;
+    }
+    final cg = (data["careGroupId"] ?? "").toString();
+    final raw = (data["medicationIds"] ?? "").toString();
+    final ids = raw.split(",").map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    if (cg.isEmpty || ids.isEmpty) {
+      return;
+    }
+    _openMedicationDose(cg, ids);
+  }
+
+  void _openMedicationDose(String careGroupId, List<String> medicationIds) {
+    final r = _router;
+    if (r == null) {
+      return;
+    }
+    r.push(
+      "/medication-dose",
+      extra: MedicationDoseRouteArgs(
+        careGroupId: careGroupId,
+        medicationIds: medicationIds,
+      ),
+    );
   }
 
   void _openChatFromData(Map<String, dynamic> data) {
@@ -85,9 +121,11 @@ final class CaresharePushService {
   void bind({
     required GoRouter router,
     required UserRepository userRepository,
+    ProfileCubit? profileCubit,
   }) {
     _router = router;
     _userRepository = userRepository;
+    _profileCubit = profileCubit;
     MedicationNotificationService.instance.setChatPayloadHandler(_openChatFromPayload);
     if (!_started) {
       return;
@@ -107,7 +145,11 @@ final class CaresharePushService {
       if (kDebugMode) {
         debugPrint("FCM getInitialMessage: ${m.data}");
       }
-      _openChatFromData(m.data);
+      if (m.data["type"]?.toString() == "chat") {
+        _openChatFromData(m.data);
+      } else if (m.data["type"]?.toString() == "medication") {
+        _openMedicationFromData(m.data);
+      }
     } catch (e) {
       debugPrint("getInitialMessage: $e");
     }
@@ -155,30 +197,55 @@ final class CaresharePushService {
       if (kDebugMode) {
         debugPrint("FCM onMessageOpenedApp: ${m.data}");
       }
-      _openChatFromData(m.data);
+      if (m.data["type"]?.toString() == "chat") {
+        _openChatFromData(m.data);
+      } else if (m.data["type"]?.toString() == "medication") {
+        _openMedicationFromData(m.data);
+      }
     });
 
     _foregroundSub = FirebaseMessaging.onMessage.listen((m) {
       if (kDebugMode) {
         debugPrint("FCM onMessage: ${m.data}");
       }
-      if (m.data["type"] != "chat") {
+      if (m.data["type"]?.toString() == "chat") {
+        final cg = (m.data["careGroupId"] ?? "").toString();
+        final ch = (m.data["channelId"] ?? "").toString();
+        if (cg.isEmpty || ch.isEmpty) {
+          return;
+        }
+        final t = m.notification?.title?.trim() ?? "Group chat";
+        final b = m.notification?.body?.trim() ?? "New message";
+        unawaited(
+          MedicationNotificationService.instance.showChatForegroundNotification(
+            title: t,
+            body: b,
+            payload: _buildChatPayload(cg, ch),
+          ),
+        );
         return;
       }
-      final cg = (m.data["careGroupId"] ?? "").toString();
-      final ch = (m.data["channelId"] ?? "").toString();
-      if (cg.isEmpty || ch.isEmpty) {
-        return;
+      if (m.data["type"]?.toString() == "medication") {
+        final st = _profileCubit?.state;
+        if (st is ProfileReady && !st.profile.resolvedAlertPreferences.medicationDue.pushApp) {
+          return;
+        }
+        final cg = (m.data["careGroupId"] ?? "").toString();
+        final raw = (m.data["medicationIds"] ?? "").toString();
+        final ids = raw.split(",").map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+        if (cg.isEmpty || ids.isEmpty) {
+          return;
+        }
+        final t = m.notification?.title?.trim() ?? "Medication";
+        final b = m.notification?.body?.trim() ?? "Time to confirm doses";
+        unawaited(
+          MedicationNotificationService.instance.showMedicationForegroundNotification(
+            title: t,
+            body: b,
+            payload: _buildMedicationPayload(cg, ids),
+          ),
+        );
       }
-      final t = m.notification?.title?.trim() ?? "Group chat";
-      final b = m.notification?.body?.trim() ?? "New message";
-      unawaited(
-        MedicationNotificationService.instance.showChatForegroundNotification(
-          title: t,
-          body: b,
-          payload: _buildChatPayload(cg, ch),
-        ),
-      );
     });
 
     _authSub = FirebaseAuth.instance.authStateChanges().listen(
