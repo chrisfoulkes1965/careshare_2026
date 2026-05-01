@@ -61,13 +61,20 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _emailController.text.trim().isEmpty) {
       _emailController.text = emailParam;
     }
-    unawaited(
-      PendingInvitationStore.saveFromQueryForPreAuthUsersOnly(
-        isAuthenticated:
-            context.read<AuthBloc>().state.status == AuthStatus.authenticated,
-        invitationId: q["invite"],
-      ),
-    );
+    final inviteFromUrl = q["invite"]?.trim() ?? "";
+    if (inviteFromUrl.isEmpty) {
+      // Avoid auto-redeeming a stale id left in SharedPreferences from an old
+      // session when this registration flow has no invitation.
+      unawaited(PendingInvitationStore.clear());
+    } else {
+      unawaited(
+        PendingInvitationStore.saveFromQueryForPreAuthUsersOnly(
+          isAuthenticated:
+              context.read<AuthBloc>().state.status == AuthStatus.authenticated,
+          invitationId: q["invite"],
+        ),
+      );
+    }
 
     final effectiveMismatch = Uri(
       path: normalizeAuthPath(routerUri.path),

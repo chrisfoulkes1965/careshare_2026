@@ -29,11 +29,14 @@ import "../../expenses/repository/expenses_repository.dart";
 import "../../medications/models/care_group_medication.dart";
 import "../../medications/repository/medication_care_group_settings_repository.dart";
 import "../../medications/repository/medications_repository.dart";
+import "home_medication_confirm_banner.dart";
 import "home_medication_reorder_banner.dart";
 import "../../meetings/models/care_group_meeting.dart";
 import "../../meetings/repository/meetings_repository.dart";
 import "../../tasks/models/care_group_task.dart";
 import "../../tasks/repository/task_repository.dart";
+import "../../chat/models/chat_channel.dart";
+import "../../chat/repository/chat_repository.dart";
 import "../../user/models/home_sections_visibility.dart";
 import "../../user/models/user_profile.dart";
 import "../../user/view/user_account_menu.dart";
@@ -160,6 +163,15 @@ String _formatRelativeAgo(DateTime? t) {
 }
 
 const int _kHomeActivityFeedLimit = 5;
+
+const int _kChatHomeStripLimit = 8;
+
+final class _ChatHomeRow {
+  const _ChatHomeRow({required this.channel, required this.unread});
+
+  final ChatChannel channel;
+  final int unread;
+}
 
 DateTime _activitySortKey(DateTime? t) =>
     t ?? DateTime.fromMillisecondsSinceEpoch(0);
@@ -584,13 +596,370 @@ Widget _homeScheduleStripSection({
   );
 }
 
+class _ChatHomeChannelsBody extends StatefulWidget {
+  const _ChatHomeChannelsBody({
+    super.key,
+    required this.dataCareGroupId,
+    required this.myUid,
+    required this.chatRepository,
+    required this.channels,
+  });
+
+  final String dataCareGroupId;
+  final String myUid;
+  final ChatRepository chatRepository;
+  final List<ChatChannel> channels;
+
+  @override
+  State<_ChatHomeChannelsBody> createState() => _ChatHomeChannelsBodyState();
+}
+
+class _ChatHomeChannelsBodyState extends State<_ChatHomeChannelsBody> {
+  List<_ChatHomeRow>? _rows;
+
+  List<ChatChannel> get _trimmed =>
+      widget.channels.take(_kChatHomeStripLimit).toList();
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_reload());
+  }
+
+  @override
+  void didUpdateWidget(covariant _ChatHomeChannelsBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!_sameChannelOrder(oldWidget.channels, widget.channels)) {
+      unawaited(_reload());
+    }
+  }
+
+  bool _sameChannelOrder(List<ChatChannel> a, List<ChatChannel> b) {
+    final ta = a.take(_kChatHomeStripLimit).map((e) => e.id).toList();
+    final tb = b.take(_kChatHomeStripLimit).map((e) => e.id).toList();
+    if (ta.length != tb.length) {
+      return false;
+    }
+    for (var i = 0; i < ta.length; i++) {
+      if (ta[i] != tb[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  Future<void> _reload() async {
+    final top = _trimmed;
+    final out = <_ChatHomeRow>[];
+    for (final c in top) {
+      var unread = 0;
+      try {
+        final lastRead = await widget.chatRepository.getLastRead(
+          widget.dataCareGroupId,
+          myUid: widget.myUid,
+          channelId: c.id,
+        );
+        unread = await widget.chatRepository.countUnread(
+          widget.dataCareGroupId,
+          c.id,
+          myUid: widget.myUid,
+          lastRead: lastRead,
+        );
+      } catch (_) {}
+      out.add(_ChatHomeRow(channel: c, unread: unread));
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() => _rows = out);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final top = _trimmed;
+    final rows = _rows;
+    final loading = rows == null || rows.length != top.length;
+    final s = CareGroupHomeStyleScope.of(context);
+    if (loading) {
+      return SizedBox(
+        height: 100,
+        child: Center(
+          child: SizedBox(
+            width: 24,
+            height: 24,
+            child: CircularProgressIndicator.adaptive(
+              valueColor: AlwaysStoppedAnimation<Color>(s.textMuted),
+            ),
+          ),
+        ),
+      );
+    }
+    return SizedBox(
+      height: 100,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        clipBehavior: Clip.none,
+        itemCount: rows.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final r = rows[index];
+          return _ChatHomeChannelCard(
+            row: r,
+            onTap: () => context.push("/chat/${r.channel.id}"),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ChatHomeChannelCard extends StatelessWidget {
+  const _ChatHomeChannelCard({
+    required this.row,
+    required this.onTap,
+  });
+
+  final _ChatHomeRow row;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = CareGroupHomeStyleScope.of(context);
+    final c = row.channel;
+    final subtitle = c.topic.isNotEmpty ? "Topic: ${c.topic}" : "";
+    return SizedBox(
+      width: 168,
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: s.cardBorder),
+              boxShadow: [
+                BoxShadow(
+                  color: s.cardShadow,
+                  blurRadius: 3,
+                  offset: const Offset(0, 1),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 3,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        color: AppColors.tealPrimary,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(Icons.forum_outlined, size: 14, color: s.textMuted),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        "Chat",
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.2,
+                          color: s.textMuted,
+                        ),
+                      ),
+                    ),
+                    if (row.unread > 0)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.tealPrimary,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          row.unread > 99 ? "99+" : "${row.unread}",
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Expanded(
+                  child: Text(
+                    c.name.isEmpty ? "Channel" : c.name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      height: 1.2,
+                      color: s.textPrimary,
+                    ),
+                  ),
+                ),
+                if (subtitle.isNotEmpty)
+                  Text(
+                    subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: s.textMuted,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _EnsureGeneralChatChannelOnce extends StatefulWidget {
+  const _EnsureGeneralChatChannelOnce({
+    super.key,
+    required this.dataCareGroupId,
+    required this.membersCareGroupId,
+    required this.chatRepository,
+  });
+
+  final String dataCareGroupId;
+  final String membersCareGroupId;
+  final ChatRepository chatRepository;
+
+  @override
+  State<_EnsureGeneralChatChannelOnce> createState() =>
+      _EnsureGeneralChatChannelOnceState();
+}
+
+class _EnsureGeneralChatChannelOnceState extends State<_EnsureGeneralChatChannelOnce> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      unawaited(
+        widget.chatRepository.ensureDefaultGeneralChannel(
+          dataCareGroupId: widget.dataCareGroupId,
+          membersCareGroupId: widget.membersCareGroupId,
+        ),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
+}
+
+Widget _chatHomeSection({
+  required BuildContext context,
+  required String dataCareGroupId,
+  required String membersCareGroupId,
+  required String myUid,
+  required ChatRepository chatRepository,
+}) {
+  if (!chatRepository.isAvailable || myUid.isEmpty) {
+    return const SizedBox.shrink();
+  }
+  final s = CareGroupHomeStyleScope.of(context);
+  final mutedStyle = TextStyle(
+    fontSize: 12,
+    color: s.textMuted,
+    height: 1.35,
+  );
+  final errStyle = Theme.of(context).textTheme.bodySmall?.copyWith(
+        color: Theme.of(context).colorScheme.error,
+      );
+  return StreamBuilder<List<ChatChannel>>(
+    stream: chatRepository.watchMyChannels(
+      dataCareGroupId,
+      myUid: myUid,
+    ),
+    builder: (context, snap) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _EnsureGeneralChatChannelOnce(
+            key: ValueKey("$dataCareGroupId|$membersCareGroupId"),
+            dataCareGroupId: dataCareGroupId,
+            membersCareGroupId: membersCareGroupId,
+            chatRepository: chatRepository,
+          ),
+          _SectionHeader(
+            title: "Chat",
+            onSeeAll: () => context.push("/chat"),
+            seeAllLabel: "Chat →",
+          ),
+          const SizedBox(height: 8),
+          if (snap.hasError)
+            Text(
+              "Could not load channels.",
+              style: errStyle,
+            )
+          else if (!snap.hasData)
+            SizedBox(
+              height: 72,
+              child: Center(
+                child: SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator.adaptive(
+                    valueColor: AlwaysStoppedAnimation<Color>(s.textMuted),
+                  ),
+                ),
+              ),
+            )
+          else if ((snap.data ?? const <ChatChannel>[]).isEmpty)
+            Text(
+              "You're not in any channels yet. Open chat to create one or ask a carer to add you.",
+              style: mutedStyle,
+            )
+          else
+            _ChatHomeChannelsBody(
+              key: ValueKey(
+                snap.data!
+                    .take(_kChatHomeStripLimit)
+                    .map((e) => e.id)
+                    .join("|"),
+              ),
+              dataCareGroupId: dataCareGroupId,
+              myUid: myUid,
+              chatRepository: chatRepository,
+              channels: snap.data!,
+            ),
+        ],
+      );
+    },
+  );
+}
+
 List<Widget> _homeOrderedLandingSectionWidgets({
   required BuildContext context,
   required HomeSectionsVisibility sections,
   required String memberListCareGroupId,
   required String dataCareGroupId,
+  required String currentUserUid,
   required MembersRepository membersRepository,
   required TaskRepository taskRepository,
+  required ChatRepository chatRepository,
   required JournalRepository journalRepository,
   required NotesRepository notesRepository,
   required Map<String, String> nameByUid,
@@ -658,6 +1027,17 @@ List<Widget> _homeOrderedLandingSectionWidgets({
             nameByUid: nameByUid,
             membersByUid: membersByUid,
             loadError: tasksErr,
+          ),
+        );
+        break;
+      case HomeSectionId.chat:
+        out.add(
+          _chatHomeSection(
+            context: context,
+            dataCareGroupId: dataCareGroupId,
+            membersCareGroupId: memberListCareGroupId,
+            myUid: currentUserUid,
+            chatRepository: chatRepository,
           ),
         );
         break;
@@ -891,6 +1271,15 @@ class HomeLandingView extends StatelessWidget {
                   onOpenTool: (path) => context.push(path),
                 ),
                 const SizedBox(height: 8),
+                if (profile.needsWizard) ...[
+                  const SizedBox(height: 4),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: _StartSetupBanner(
+                      onStart: () => context.go("/setup"),
+                    ),
+                  ),
+                ],
                 if (showWizardBanner) ...[
                   const SizedBox(height: 4),
                   Padding(
@@ -939,15 +1328,28 @@ class HomeLandingView extends StatelessWidget {
                 const SizedBox(height: 4),
                 if (dataId != null &&
                     dataId.isNotEmpty &&
-                    profile.resolvedAlertPreferences.medicationReorder.inApp) ...[
+                    profile
+                        .resolvedAlertPreferences.medicationReorder.inApp) ...[
                   Padding(
                     padding: const EdgeInsets.fromLTRB(18, 0, 18, 0),
                     child: HomeMedicationReorderBanner(
                       careGroupDataId: dataId,
                       medicationsRepository:
                           context.read<MedicationsRepository>(),
-                      settingsRepository: context
-                          .read<MedicationCareGroupSettingsRepository>(),
+                      settingsRepository:
+                          context.read<MedicationCareGroupSettingsRepository>(),
+                    ),
+                  ),
+                ],
+                if (dataId != null &&
+                    dataId.isNotEmpty &&
+                    profile.resolvedAlertPreferences.medicationDue.inApp) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 0),
+                    child: HomeMedicationConfirmBanner(
+                      careGroupDataId: dataId,
+                      medicationsRepository:
+                          context.read<MedicationsRepository>(),
                     ),
                   ),
                 ],
@@ -960,6 +1362,7 @@ class HomeLandingView extends StatelessWidget {
                     ),
                     memberListCareGroupId: memberDocId,
                     dataCareGroupId: dataId,
+                    currentUserUid: profile.uid,
                     membersRepository: context.read<MembersRepository>(),
                     taskRepository: context.read<TaskRepository>(),
                     meetingsRepository: context.read<MeetingsRepository>(),
@@ -970,6 +1373,7 @@ class HomeLandingView extends StatelessWidget {
                     expensesRepository: context.read<ExpensesRepository>(),
                     journalRepository: context.read<JournalRepository>(),
                     notesRepository: context.read<NotesRepository>(),
+                    chatRepository: context.read<ChatRepository>(),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -1085,6 +1489,7 @@ class _Header extends StatelessWidget {
     final top = MediaQuery.viewPaddingOf(context).top;
     final h = headerStyle;
     final s = CareGroupHomeStyleScope.of(context);
+    final menuToolbarChips = _toolbarChipsForCareTeamMenu(s.toolBarChips);
     final actionStyle = IconButton.styleFrom(
       minimumSize: const Size(headerActionSize, headerActionSize),
       fixedSize: const Size(headerActionSize, headerActionSize),
@@ -1262,13 +1667,13 @@ class _Header extends StatelessWidget {
                                   width: 32,
                                   height: 32,
                                   decoration: BoxDecoration(
-                                    color: s.toolBarChips[i].background,
+                                    color: menuToolbarChips[i].background,
                                     borderRadius: BorderRadius.circular(9),
                                   ),
                                   child: Icon(
                                     _kCareTeamTools[i].$1,
                                     size: 18,
-                                    color: s.toolBarChips[i].iconColor,
+                                    color: menuToolbarChips[i].iconColor,
                                   ),
                                 ),
                                 const SizedBox(width: 12),
@@ -1342,6 +1747,30 @@ const _kCareTeamTools = <(IconData, String, String)>[
   (Icons.folder_open_outlined, "Documents", "/document-library"),
   (Icons.forum_outlined, "Chat", "/chat"),
 ];
+
+/// [CareGroupHomePageStyle.toolBarChips] must cover every [_kCareTeamTools] row;
+/// pad so menu indexing can never go out of range (avoids web/header edge cases).
+List<({Color background, Color iconColor})> _toolbarChipsForCareTeamMenu(
+  List<({Color background, Color iconColor})> chips,
+) {
+  final need = _kCareTeamTools.length;
+  if (chips.length >= need) {
+    return chips;
+  }
+  final pad = chips.isEmpty
+      ? (
+          background: AppColors.tealLight,
+          iconColor: AppColors.tealPrimary,
+        )
+      : chips.last;
+  return [
+    ...chips,
+    ...List<({Color background, Color iconColor})>.filled(
+      need - chips.length,
+      pad,
+    ),
+  ];
+}
 
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({required this.title, this.onSeeAll, this.seeAllLabel});
@@ -1639,6 +2068,7 @@ class _HomeConfigurableLandingSections extends StatelessWidget {
     required this.homeSections,
     required this.memberListCareGroupId,
     required this.dataCareGroupId,
+    required this.currentUserUid,
     required this.membersRepository,
     required this.taskRepository,
     required this.meetingsRepository,
@@ -1647,11 +2077,13 @@ class _HomeConfigurableLandingSections extends StatelessWidget {
     required this.expensesRepository,
     required this.journalRepository,
     required this.notesRepository,
+    required this.chatRepository,
   });
 
   final HomeSectionsVisibility homeSections;
   final String? memberListCareGroupId;
   final String? dataCareGroupId;
+  final String currentUserUid;
   final MembersRepository membersRepository;
   final TaskRepository taskRepository;
   final MeetingsRepository meetingsRepository;
@@ -1660,6 +2092,7 @@ class _HomeConfigurableLandingSections extends StatelessWidget {
   final ExpensesRepository expensesRepository;
   final JournalRepository journalRepository;
   final NotesRepository notesRepository;
+  final ChatRepository chatRepository;
 
   @override
   Widget build(BuildContext context) {
@@ -1674,7 +2107,8 @@ class _HomeConfigurableLandingSections extends StatelessWidget {
         !meetingsRepository.isAvailable &&
         !linkedCalendarEventsRepository.isAvailable &&
         !medicationsRepository.isAvailable &&
-        !expensesRepository.isAvailable) {
+        !expensesRepository.isAvailable &&
+        !chatRepository.isAvailable) {
       return const SizedBox.shrink();
     }
     final membersCg = memberListCareGroupId!;
@@ -1767,8 +2201,10 @@ class _HomeConfigurableLandingSections extends StatelessWidget {
                                     sections: homeSections,
                                     memberListCareGroupId: membersCg,
                                     dataCareGroupId: dataCg,
+                                    currentUserUid: currentUserUid,
                                     membersRepository: membersRepository,
                                     taskRepository: taskRepository,
+                                    chatRepository: chatRepository,
                                     journalRepository: journalRepository,
                                     notesRepository: notesRepository,
                                     nameByUid: byUid,
@@ -2623,6 +3059,51 @@ class _AddCta extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _StartSetupBanner extends StatelessWidget {
+  const _StartSetupBanner({required this.onStart});
+
+  final VoidCallback onStart;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = CareGroupHomeStyleScope.of(context);
+    final a = s.outlineAccent;
+    return Material(
+      color: s.wizardBannerBackground,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "Set up your care group",
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "Complete the short setup wizard to create your team. "
+              "Then you can use tasks, chat, calendar, medications, and more on the home page.",
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 12),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: a,
+                foregroundColor: a.computeLuminance() < 0.45
+                    ? const Color(0xFFF5F0EA)
+                    : const Color(0xFF1A1816),
+              ),
+              onPressed: onStart,
+              child: const Text("Start setup"),
+            ),
+          ],
         ),
       ),
     );

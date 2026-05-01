@@ -523,6 +523,16 @@ class UserRepository {
     });
   }
 
+  /// Clears [UserProfile.activeCareGroupId] when it points at a team the user
+  /// does not belong to (orphaned profile state).
+  Future<void> clearActiveCareGroup(String uid) async {
+    if (!_firebaseReady) return;
+    await _userRef(uid).update({
+      "activeCareGroupId": FieldValue.delete(),
+      firestoreUserLegacyActiveCareGroupField(): FieldValue.delete(),
+    });
+  }
+
   /// When [listCareGroupsForUser] is empty (e.g. collection-group) but the profile
   /// has [UserProfile.activeCareGroupId], build a [CareGroupOption] with direct [get]s.
   Future<CareGroupOption?> fetchCareGroupOptionForActiveProfile({

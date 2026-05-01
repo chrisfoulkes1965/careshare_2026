@@ -12,6 +12,9 @@ class ChatRepository {
 
   final bool _firebaseReady;
 
+  /// Fixed Firestore doc id for the care-team-wide channel (all signed-in members).
+  static const String defaultGeneralChannelId = "general";
+
   static const Duration _opTimeout = Duration(minutes: 2);
   static const int _unreadQueryCap = 100;
 
@@ -33,6 +36,84 @@ class ChatRepository {
         .collection("careGroups")
         .doc(careGroupId)
         .collection("chatChannels");
+  }
+
+  bool _sortedMemberUidListsEqual(List<String> a, List<String> b) {
+    if (a.length != b.length) {
+      return false;
+    }
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// Ensures [careGroups/{dataCareGroupId}/chatChannels/general] exists and
+  /// [memberUids] matches every signed-in member under [membersCareGroupId]/members.
+  ///
+  /// Call when opening chat or home; carers/principal perform writes. Receives-care-only
+  /// members cannot create or bulk-update channels — failures are ignored.
+  Future<void> ensureDefaultGeneralChannel({
+    required String dataCareGroupId,
+    required String membersCareGroupId,
+  }) async {
+    if (!_firebaseReady) {
+      return;
+    }
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || uid.isEmpty) {
+      return;
+    }
+    final dCg = dataCareGroupId.trim();
+    final mCg = membersCareGroupId.trim();
+    if (dCg.isEmpty || mCg.isEmpty) {
+      return;
+    }
+
+    final memberSnap = await _withTimeout(
+      FirebaseFirestore.instance
+          .collection("careGroups")
+          .doc(mCg)
+          .collection("members")
+          .get(),
+    );
+    final uids = memberSnap.docs.map((d) => d.id).toList()..sort();
+    if (uids.isEmpty) {
+      return;
+    }
+
+    final chRef =
+        _channels(dCg).doc(ChatRepository.defaultGeneralChannelId);
+
+    try {
+      await FirebaseFirestore.instance.runTransaction((tx) async {
+        final snap = await tx.get(chRef);
+        if (!snap.exists) {
+          tx.set(chRef, {
+            "name": "General",
+            "description": "",
+            "topic": "general",
+            "memberUids": uids,
+            "createdBy": uid,
+            "createdAt": FieldValue.serverTimestamp(),
+          });
+          return;
+        }
+        final cur = (snap.data()?["memberUids"] as List<dynamic>?)
+                ?.map((e) => e.toString())
+                .toList() ??
+            <String>[];
+        cur.sort();
+        if (_sortedMemberUidListsEqual(cur, uids)) {
+          return;
+        }
+        tx.update(chRef, {"memberUids": uids});
+      });
+    } catch (_) {
+      // Permission denied for receives-care-only accounts, or contention.
+    }
   }
 
   CollectionReference<Map<String, dynamic>> _messages(

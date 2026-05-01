@@ -47,6 +47,7 @@ class ChatChannelsScreen extends StatelessWidget {
           create: (context) => ChannelsCubit(
             repository: context.read<ChatRepository>(),
             careGroupId: dataCg,
+            membersCareGroupId: membersCg,
             uid: state.profile.uid,
           )..subscribe(),
           child: _ChannelsScaffold(

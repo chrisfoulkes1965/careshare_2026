@@ -65,6 +65,7 @@ final class UserAlertPreferences extends Equatable {
   const UserAlertPreferences({
     this.medicationReorder = const AlertChannels(),
     this.medicationDue = const AlertChannels(),
+    this.medicationMissed = const AlertChannels(),
   });
 
   /// When on-hand supply is within the care group’s “reorder lead” window.
@@ -73,6 +74,9 @@ final class UserAlertPreferences extends Equatable {
   /// Due-dose reminders (local schedule + optional server push mirror).
   final AlertChannels medicationDue;
 
+  /// When a scheduled dose was not confirmed in time (principal / POA / group admin).
+  final AlertChannels medicationMissed;
+
   static UserAlertPreferences fromFirestore(Object? raw) {
     if (raw is! Map) {
       return const UserAlertPreferences();
@@ -80,6 +84,7 @@ final class UserAlertPreferences extends Equatable {
     return UserAlertPreferences(
       medicationReorder: AlertChannels.fromFirestore(raw["medicationReorder"]),
       medicationDue: AlertChannels.fromFirestore(raw["medicationDue"]),
+      medicationMissed: AlertChannels.fromFirestore(raw["medicationMissed"]),
     );
   }
 
@@ -87,19 +92,22 @@ final class UserAlertPreferences extends Equatable {
     return {
       "medicationReorder": medicationReorder.toMap(),
       "medicationDue": medicationDue.toMap(),
+      "medicationMissed": medicationMissed.toMap(),
     };
   }
 
   UserAlertPreferences copyWith({
     AlertChannels? medicationReorder,
     AlertChannels? medicationDue,
+    AlertChannels? medicationMissed,
   }) {
     return UserAlertPreferences(
       medicationReorder: medicationReorder ?? this.medicationReorder,
       medicationDue: medicationDue ?? this.medicationDue,
+      medicationMissed: medicationMissed ?? this.medicationMissed,
     );
   }
 
   @override
-  List<Object?> get props => [medicationReorder, medicationDue];
+  List<Object?> get props => [medicationReorder, medicationDue, medicationMissed];
 }

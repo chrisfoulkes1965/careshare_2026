@@ -18,6 +18,7 @@ import "features/invitations/repository/invitation_repository.dart";
 import "features/journal/repository/journal_repository.dart";
 import "features/medications/repository/medication_care_group_settings_repository.dart";
 import "features/medications/repository/medications_repository.dart";
+import "features/medications/logic/medication_dose_payload.dart";
 import "features/medications/view/medication_dose_route_args.dart";
 import "features/meetings/repository/meetings_repository.dart";
 import "features/calendar/repository/linked_calendar_events_repository.dart";
@@ -74,24 +75,20 @@ class _CareShareAppState extends State<CareShareApp>
           _doseNavRegistered = true;
           MedicationNotificationService.instance
               .setDosePayloadHandler((payload) {
-            final parts = payload.split("|");
-            if (parts.length < 3) {
+            if (payload.startsWith("missed|")) {
+              _router!.push("/medications");
               return;
             }
-            final cg = parts[1];
-            final ids = parts[2]
-                .split(",")
-                .map((e) => e.trim())
-                .where((e) => e.isNotEmpty)
-                .toList();
-            if (ids.isEmpty) {
+            final parsed = MedicationDosePayload.parse(payload);
+            if (parsed == null) {
               return;
             }
             _router!.push(
               "/medication-dose",
               extra: MedicationDoseRouteArgs(
-                careGroupId: cg,
-                medicationIds: ids,
+                careGroupId: parsed.careGroupId,
+                medicationIds: parsed.medicationIds,
+                slotKey: parsed.slotKey,
               ),
             );
           });
@@ -130,25 +127,33 @@ class _CareShareAppState extends State<CareShareApp>
       theme: AppTheme.light(),
       routerConfig: router,
       builder: (context, child) {
+        // [Router] may pass a null [child] for a frame before the navigator
+        // exists; [SizedBox.shrink] leaves a blank (often grey) screen.
+        final routed = child ??
+            const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
         return BlocBuilder<ProfileCubit, ProfileState>(
           buildWhen: (prev, next) {
             if (prev is ProfileReady && next is ProfileReady) {
               return prev.activeCareGroupThemeArgb !=
                   next.activeCareGroupThemeArgb;
             }
-            return (prev is ProfileReady) != (next is ProfileReady);
+            if (prev is ProfileReady || next is ProfileReady) {
+              return true;
+            }
+            return prev != next;
           },
           builder: (context, state) {
-            final w = child ?? const SizedBox.shrink();
             if (state is! ProfileReady) {
-              return w;
+              return routed;
             }
             return Theme(
               data: buildCareGroupAppTheme(
                 Theme.of(context),
                 activeThemeArgb: state.activeCareGroupThemeArgb,
               ),
-              child: w,
+              child: routed,
             );
           },
         );

@@ -100,9 +100,10 @@ class _MedicationDoseConfirmScreenState extends State<MedicationDoseConfirmScree
         padding: const EdgeInsets.all(20),
         children: [
           const Text(
-            "Confirm you took the scheduled dose for each item below. "
-            "On-hand doses will go down by one for each (using your entered quantity, or the 28-day default if none). "
-            "Each confirmation is recorded as a dose log for your care team (separate from prescription settings).",
+            "Your care group expects a confirmation for this scheduled dose. "
+            "Tap below only if the medicines were actually taken. "
+            "On-hand counts decrease by one per item (using entered stock, or the 28-day estimate). "
+            "If you skip confirming, principal carers can be notified after a grace period.",
             style: TextStyle(fontSize: 14),
           ),
           const SizedBox(height: 16),
@@ -123,6 +124,7 @@ class _MedicationDoseConfirmScreenState extends State<MedicationDoseConfirmScree
                       await context.read<MedicationsRepository>().applyDoseDecrements(
                             careGroupId: args.careGroupId,
                             medicationIds: args.medicationIds.toSet(),
+                            slotKey: args.slotKey,
                           );
                       if (context.mounted) {
                         context.pop(true);

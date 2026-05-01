@@ -586,9 +586,9 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
             textInputAction: TextInputAction.next,
           ),
           const SizedBox(height: 10),
-          if (ro && m != null && m!.lowStockThreshold != null)
+          if (ro && m != null && m.lowStockThreshold != null)
             Text(
-              "Low-stock alert at or below ${m!.lowStockThreshold} doses (set by organiser).",
+              "Low-stock alert at or below ${m.lowStockThreshold} doses (set by organiser).",
               style: Theme.of(context).textTheme.bodySmall,
             )
           else if (!ro)
@@ -750,11 +750,11 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
               ],
             ),
           ],
-          if (ro && m != null && m!.reminderEnabled) ...[
+          if (ro && m != null && m.reminderEnabled) ...[
             const SizedBox(height: 8),
-            Text(m!.scheduleSummaryLine, style: Theme.of(context).textTheme.bodySmall),
-            if (m!.hasValidReminderSchedule && m!.reminderTimes.isNotEmpty)
-              Text(m!.inventorySummaryLine, style: Theme.of(context).textTheme.labelSmall),
+            Text(m.scheduleSummaryLine, style: Theme.of(context).textTheme.bodySmall),
+            if (m.hasValidReminderSchedule && m.reminderTimes.isNotEmpty)
+              Text(m.inventorySummaryLine, style: Theme.of(context).textTheme.labelSmall),
           ],
           if (m != null) ...[
             const SizedBox(height: 16),
@@ -763,7 +763,7 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
             StreamBuilder<List<MedicationDoseLogEntry>>(
               stream: context.read<MedicationsRepository>().watchRecentDoseLogs(
                     careGroupId: context.read<MedicationsCubit>().careGroupId,
-                    medicationId: m!.id,
+                    medicationId: m.id,
                   ),
               builder: (context, snap) {
                 final logs = snap.data ?? const [];
@@ -783,7 +783,7 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
                         padding: const EdgeInsets.only(bottom: 6),
                         child: Text(
                           e.takenAt != null
-                              ? "${e.takenAt!.toLocal().toIso8601String().replaceFirst("T", " ").split(".").first}"
+                              ? e.takenAt!.toLocal().toIso8601String().replaceFirst("T", " ").split(".").first
                               : "—",
                           style: Theme.of(context).textTheme.bodySmall,
                         ),

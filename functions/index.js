@@ -2,11 +2,9 @@ const {onDocumentCreated, onDocumentUpdated} = require("firebase-functions/v2/fi
 const {defineString} = require("firebase-functions/params");
 const {initializeApp} = require("firebase-admin/app");
 const {getFirestore, FieldValue, Timestamp} = require("firebase-admin/firestore");
-const {getMessaging} = require("firebase-admin/messaging");
 
 initializeApp();
 const db = getFirestore();
-const messaging = getMessaging();
 
 // Invitation emails via Resend (https://resend.com). Params: RESEND_*, CARESHARE_APP_URL.
 // See: https://firebase.google.com/docs/functions/config-env
@@ -194,92 +192,6 @@ function tsEqual(a, b) {
   }
   return a.toMillis() === b.toMillis();
 }
-
-/**
- * When a new in-app chat message is written, send FCM to other channel members.
- */
-exports.onChatMessageCreated = onDocumentCreated(
-  {
-    document: "careGroups/{careGroupId}/chatChannels/{channelId}/messages/{messageId}",
-    region: "us-central1",
-  },
-  async (event) => {
-    const snap = event.data;
-    if (!snap) {
-      return;
-    }
-    const d = snap.data();
-    if (!d) {
-      return;
-    }
-    const text = d.text != null ? String(d.text) : "";
-    const createdBy = d.createdBy != null ? String(d.createdBy) : "";
-    if (!createdBy) {
-      return;
-    }
-    const {careGroupId, channelId} = event.params;
-
-    const chRef = db.doc(
-      "careGroups/" + careGroupId + "/chatChannels/" + channelId
-    );
-    const ch = await chRef.get();
-    if (!ch.exists) {
-      return;
-    }
-    const m = ch.data() || {};
-    const memberUids = Array.isArray(m.memberUids) ? m.memberUids.map(String) : [];
-    const channelName = m.name && String(m.name).trim() ? String(m.name).trim() : "Chat";
-    if (memberUids.length === 0) {
-      return;
-    }
-
-    const sSnap = await db.doc("users/" + createdBy).get();
-    const senderName = sSnap.exists
-      ? String(sSnap.get("displayName") || "Someone").trim() || "Someone"
-      : "Someone";
-    const preview = text.length > 120 ? text.slice(0, 120) + "\u2026" : (text || "(message)");
-
-    const messages = [];
-    for (const uid of memberUids) {
-      if (uid === createdBy) {
-        continue;
-      }
-      const tokCol = await db.collection("users/" + uid + "/devicePushTokens").get();
-      for (const doc of tokCol.docs) {
-        const token = (doc.get("token") && String(doc.get("token"))) || "";
-        if (!token) {
-          continue;
-        }
-        messages.push({
-          token: token,
-          notification: {
-            title: "CareShare \u00B7 " + channelName,
-            body: senderName + ": " + preview,
-          },
-          data: {
-            type: "chat",
-            careGroupId: String(careGroupId),
-            channelId: String(channelId),
-          },
-          android: {
-            notification: {
-              channelId: "careshare_chat",
-            },
-          },
-        });
-      }
-    }
-    if (messages.length === 0) {
-      return;
-    }
-    const res = await messaging.sendEach(messages);
-    console.log(
-      "onChatMessageCreated: sent=" + messages.length +
-      " success=" + res.successCount +
-      " fail=" + res.failureCount
-    );
-  }
-);
 
 /**
  * When a care-group invitation is created, email the invitee a sign-in link.
@@ -582,3 +494,13 @@ exports.syncInboundGoogleCalendar = syncInboundGoogleCalendar;
 const altEmail = require("./altEmailVerification");
 exports.sendAlternateEmailVerification = altEmail.sendAlternateEmailVerification;
 exports.confirmAlternateEmailVerification = altEmail.confirmAlternateEmailVerification;
+
+const chatNotifications = require("./chatNotifications");
+exports.onChatMessageCreated = chatNotifications.onChatMessageCreated;
+
+const medSched = require("./medicationReminderScheduler");
+exports.scheduledMedicationReminders = medSched.scheduledMedicationReminders;
+
+const medMissed = require("./medicationMissedPrincipals");
+exports.scheduledMedicationMissedPrincipalAlerts =
+  medMissed.scheduledMedicationMissedPrincipalAlerts;

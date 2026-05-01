@@ -176,6 +176,76 @@ class _UserSettingsAlertsScreenState extends State<UserSettingsAlertsScreen> {
                         }),
               ),
               const SizedBox(height: 24),
+              Text(
+                "Medication — missed confirmation",
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                "If a scheduled dose is not confirmed in time, principal carers, POA, and group admins can be alerted.",
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+              ),
+              const SizedBox(height: 12),
+              _channelTile(
+                context,
+                title: "In-app",
+                subtitle:
+                    "When wired: in-app summary for missed confirmations. Home prompts use “Medication due” above.",
+                value: _draft!.medicationMissed.inApp,
+                onChanged: _saving
+                    ? null
+                    : (v) => setState(() {
+                          _draft = _draft!.copyWith(
+                            medicationMissed:
+                                _draft!.medicationMissed.copyWith(inApp: v),
+                          );
+                        }),
+              ),
+              _channelTile(
+                context,
+                title: "App push notification",
+                subtitle: "When the backend detects a missed confirmation",
+                value: _draft!.medicationMissed.pushApp,
+                onChanged: _saving
+                    ? null
+                    : (v) => setState(() {
+                          _draft = _draft!.copyWith(
+                            medicationMissed:
+                                _draft!.medicationMissed.copyWith(pushApp: v),
+                          );
+                        }),
+              ),
+              _channelTile(
+                context,
+                title: "Email",
+                subtitle: "When server-side email delivery is enabled",
+                value: _draft!.medicationMissed.email,
+                onChanged: _saving
+                    ? null
+                    : (v) => setState(() {
+                          _draft = _draft!.copyWith(
+                            medicationMissed:
+                                _draft!.medicationMissed.copyWith(email: v),
+                          );
+                        }),
+              ),
+              _channelTile(
+                context,
+                title: "SMS",
+                subtitle: "Coming soon — preference is saved for later",
+                value: _draft!.medicationMissed.sms,
+                onChanged: _saving
+                    ? null
+                    : (v) => setState(() {
+                          _draft = _draft!.copyWith(
+                            medicationMissed:
+                                _draft!.medicationMissed.copyWith(sms: v),
+                          );
+                        }),
+              ),
+              const SizedBox(height: 24),
               FilledButton(
                 onPressed: _saving || _draft == base
                     ? null

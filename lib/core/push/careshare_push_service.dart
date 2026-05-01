@@ -51,9 +51,17 @@ final class CaresharePushService {
     return "chat|$careGroupId|$channelId";
   }
 
-  static String _buildMedicationPayload(String careGroupId, List<String> medicationIds) {
+  static String _buildMedicationPayload(
+    String careGroupId,
+    List<String> medicationIds, {
+    String slotKey = "",
+  }) {
     final s = medicationIds.where((e) => e.isNotEmpty).toList()..sort();
-    return "dose|$careGroupId|${s.join(",")}";
+    final sk = slotKey.trim();
+    if (sk.isEmpty) {
+      return "dose|$careGroupId|${s.join(",")}";
+    }
+    return "dose|$careGroupId|${s.join(",")}|$sk";
   }
 
   void _openMedicationFromData(Map<String, dynamic> data) {
@@ -66,10 +74,26 @@ final class CaresharePushService {
     if (cg.isEmpty || ids.isEmpty) {
       return;
     }
-    _openMedicationDose(cg, ids);
+    final slotKey = (data["slotKey"] ?? "").toString().trim();
+    _openMedicationDose(cg, ids, slotKey: slotKey);
   }
 
-  void _openMedicationDose(String careGroupId, List<String> medicationIds) {
+  void _openMedicationMissedFromData(Map<String, dynamic> data) {
+    if (data["type"]?.toString() != "medicationMissed") {
+      return;
+    }
+    final r = _router;
+    if (r == null) {
+      return;
+    }
+    r.push("/medications");
+  }
+
+  void _openMedicationDose(
+    String careGroupId,
+    List<String> medicationIds, {
+    String slotKey = "",
+  }) {
     final r = _router;
     if (r == null) {
       return;
@@ -79,6 +103,7 @@ final class CaresharePushService {
       extra: MedicationDoseRouteArgs(
         careGroupId: careGroupId,
         medicationIds: medicationIds,
+        slotKey: slotKey,
       ),
     );
   }
@@ -149,6 +174,8 @@ final class CaresharePushService {
         _openChatFromData(m.data);
       } else if (m.data["type"]?.toString() == "medication") {
         _openMedicationFromData(m.data);
+      } else if (m.data["type"]?.toString() == "medicationMissed") {
+        _openMedicationMissedFromData(m.data);
       }
     } catch (e) {
       debugPrint("getInitialMessage: $e");
@@ -201,6 +228,8 @@ final class CaresharePushService {
         _openChatFromData(m.data);
       } else if (m.data["type"]?.toString() == "medication") {
         _openMedicationFromData(m.data);
+      } else if (m.data["type"]?.toString() == "medicationMissed") {
+        _openMedicationMissedFromData(m.data);
       }
     });
 
@@ -236,13 +265,33 @@ final class CaresharePushService {
         if (cg.isEmpty || ids.isEmpty) {
           return;
         }
+        final slotKey = (m.data["slotKey"] ?? "").toString().trim();
         final t = m.notification?.title?.trim() ?? "Medication";
         final b = m.notification?.body?.trim() ?? "Time to confirm doses";
         unawaited(
           MedicationNotificationService.instance.showMedicationForegroundNotification(
             title: t,
             body: b,
-            payload: _buildMedicationPayload(cg, ids),
+            payload: _buildMedicationPayload(cg, ids, slotKey: slotKey),
+          ),
+        );
+        return;
+      }
+      if (m.data["type"]?.toString() == "medicationMissed") {
+        final st = _profileCubit?.state;
+        if (st is ProfileReady &&
+            !st.profile.resolvedAlertPreferences.medicationMissed.pushApp) {
+          return;
+        }
+        final cg = (m.data["careGroupId"] ?? "").toString();
+        final t = m.notification?.title?.trim() ?? "Medication";
+        final b = m.notification?.body?.trim() ?? "A scheduled dose was not confirmed";
+        final payload = cg.isEmpty ? "missed|" : "missed|$cg";
+        unawaited(
+          MedicationNotificationService.instance.showMedicationForegroundNotification(
+            title: t,
+            body: b,
+            payload: payload,
           ),
         );
       }

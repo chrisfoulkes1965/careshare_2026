@@ -41,6 +41,9 @@ class UserSettingsHomepageScreen extends StatelessWidget {
       case HomeSectionId.tasks:
         return v.tasks;
 
+      case HomeSectionId.chat:
+        return v.chat;
+
       case HomeSectionId.medications:
         return v.medications;
 
@@ -73,6 +76,9 @@ class UserSettingsHomepageScreen extends StatelessWidget {
       case HomeSectionId.tasks:
         return v.copyWith(tasks: on);
 
+      case HomeSectionId.chat:
+        return v.copyWith(chat: on);
+
       case HomeSectionId.medications:
         return v.copyWith(medications: on);
 
@@ -101,6 +107,9 @@ class UserSettingsHomepageScreen extends StatelessWidget {
       case HomeSectionId.tasks:
         return "Upcoming tasks that have a due date";
 
+      case HomeSectionId.chat:
+        return "Channels you belong to in this care group";
+
       case HomeSectionId.medications:
         return "Medicine reminder preview";
 
@@ -128,6 +137,9 @@ class UserSettingsHomepageScreen extends StatelessWidget {
 
       case HomeSectionId.tasks:
         return "Tasks";
+
+      case HomeSectionId.chat:
+        return "Chat";
 
       case HomeSectionId.medications:
         return "Medications";

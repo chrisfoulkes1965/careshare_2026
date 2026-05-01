@@ -5,9 +5,12 @@ import "package:file_picker/file_picker.dart";
 import "package:firebase_auth/firebase_auth.dart";
 import "package:firebase_storage/firebase_storage.dart";
 
+import "../logic/medication_reminder_ack_id.dart";
 import "../models/care_group_medication.dart";
 import "../models/medication_batch_prep_doc.dart";
 import "../models/medication_dose_log.dart";
+import "../models/medication_reminder_ack.dart";
+import "../models/medication_reminder_ack_draft.dart";
 import "../../tasks/repository/platform_file_read_io.dart" if (dart.library.html) "../../tasks/repository/platform_file_read_web.dart" as platform_file_read;
 
 Map<String, dynamic> _scheduleFields({
@@ -48,6 +51,13 @@ class MedicationsRepository {
         .collection("careGroups")
         .doc(careGroupId)
         .collection("medications");
+  }
+
+  CollectionReference<Map<String, dynamic>> _medicationReminderAcks(String careGroupId) {
+    return FirebaseFirestore.instance
+        .collection("careGroups")
+        .doc(careGroupId)
+        .collection("medicationReminderAcks");
   }
 
   DocumentReference<Map<String, dynamic>> _medicationBatchPrepDoc(String careGroupId) {
@@ -110,6 +120,68 @@ class MedicationsRepository {
         SetOptions(merge: true),
       ),
     );
+  }
+
+  /// Ensures expectation docs exist for scheduled doses (merge-safe if already confirmed).
+  Future<void> syncMedicationReminderAckExpectations({
+    required String careGroupId,
+    required List<MedicationReminderAckDraft> drafts,
+  }) async {
+    if (!_firebaseReady || drafts.isEmpty) {
+      return;
+    }
+    await _withOpTimeout(
+      FirebaseFirestore.instance.runTransaction((t) async {
+        for (final d in drafts) {
+          final ids = [...d.medicationIds]..sort();
+          if (ids.isEmpty || d.slotKey.trim().isEmpty) {
+            continue;
+          }
+          final docId = medicationReminderAckDocId(
+            careGroupDataId: careGroupId,
+            slotKey: d.slotKey.trim(),
+            medicationIds: ids,
+          );
+          final ref = _medicationReminderAcks(careGroupId).doc(docId);
+          final snap = await t.get(ref);
+          final dueTs = Timestamp.fromDate(d.dueAtUtc);
+          if (!snap.exists) {
+            t.set(ref, {
+              "slotKey": d.slotKey.trim(),
+              "medicationIds": ids,
+              "dueAt": dueTs,
+              "needsConfirmation": true,
+              "principalAlertSent": false,
+              "updatedAt": FieldValue.serverTimestamp(),
+            });
+          } else {
+            final data = snap.data();
+            if (data != null && data["needsConfirmation"] == true) {
+              t.update(ref, {
+                "slotKey": d.slotKey.trim(),
+                "medicationIds": ids,
+                "dueAt": dueTs,
+                "updatedAt": FieldValue.serverTimestamp(),
+              });
+            }
+          }
+        }
+      }),
+    );
+  }
+
+  /// Pending confirmation acks (newest due first). Filter `dueAt <= now` in the UI so the list
+  /// updates when time passes without requiring a new Firestore snapshot.
+  Stream<List<MedicationReminderAck>> watchOverdueMedicationAcks(String careGroupId) {
+    if (!_firebaseReady) {
+      return const Stream.empty();
+    }
+    return _medicationReminderAcks(careGroupId)
+        .where("needsConfirmation", isEqualTo: true)
+        .orderBy("dueAt", descending: true)
+        .limit(24)
+        .snapshots()
+        .map((s) => s.docs.map(MedicationReminderAck.fromDoc).toList());
   }
 
   Stream<List<MedicationDoseLogEntry>> watchRecentDoseLogs({
@@ -529,6 +601,15 @@ class MedicationsRepository {
     if (uid == null) {
       return Future.error(StateError("Not signed in."));
     }
+    final trimmedSlot = slotKey.trim();
+    final sortedIds = medicationIds.where((e) => e.isNotEmpty).toList()..sort();
+    final ackDocId = trimmedSlot.isNotEmpty && sortedIds.isNotEmpty
+        ? medicationReminderAckDocId(
+            careGroupDataId: careGroupId,
+            slotKey: trimmedSlot,
+            medicationIds: sortedIds,
+          )
+        : null;
     return _withOpTimeout(
       FirebaseFirestore.instance.runTransaction((t) async {
         for (final id in medicationIds) {
@@ -554,11 +635,23 @@ class MedicationsRepository {
             "takenAt": FieldValue.serverTimestamp(),
             "loggedBy": uid,
           };
-          if (slotKey.isNotEmpty) {
-            logData["slotKey"] = slotKey;
+          if (trimmedSlot.isNotEmpty) {
+            logData["slotKey"] = trimmedSlot.length > 120 ? trimmedSlot.substring(0, 120) : trimmedSlot;
           }
           t.set(logRef, logData);
           t.update(r, {"quantityOnHand": next});
+        }
+        if (ackDocId != null) {
+          final ackRef = _medicationReminderAcks(careGroupId).doc(ackDocId);
+          final ackSnap = await t.get(ackRef);
+          if (ackSnap.exists) {
+            t.update(ackRef, {
+              "needsConfirmation": false,
+              "acknowledgedAt": FieldValue.serverTimestamp(),
+              "acknowledgedBy": uid,
+              "updatedAt": FieldValue.serverTimestamp(),
+            });
+          }
         }
       }),
     );

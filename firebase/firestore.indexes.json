@@ -1,4 +1,22 @@
 {
-  "indexes": [],
+  "indexes": [
+    {
+      "collectionGroup": "medicationReminderAcks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "needsConfirmation", "order": "ASCENDING" },
+        { "fieldPath": "dueAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "medicationReminderAcks",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "needsConfirmation", "order": "ASCENDING" },
+        { "fieldPath": "principalAlertSent", "order": "ASCENDING" },
+        { "fieldPath": "dueAt", "order": "ASCENDING" }
+      ]
+    }
+  ],
   "fieldOverrides": []
 }

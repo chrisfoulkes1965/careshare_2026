@@ -2,6 +2,7 @@ import "package:cloud_firestore/cloud_firestore.dart";
 import "package:firebase_auth/firebase_auth.dart";
 
 import "../../../core/firebase/firestore_remote_compat.dart";
+import "../../chat/repository/chat_repository.dart";
 import "../models/setup_models.dart";
 
 final class SetupSubmit {
@@ -100,6 +101,20 @@ class SetupRepository {
       "joinedAt": now,
       "kudosScore": 0,
     });
+
+    batch.set(
+      groupRef
+          .collection("chatChannels")
+          .doc(ChatRepository.defaultGeneralChannelId),
+      {
+        "name": "General",
+        "description": "",
+        "topic": "general",
+        "memberUids": <String>[uid],
+        "createdBy": uid,
+        "createdAt": now,
+      },
+    );
 
     await batch.commit();
 

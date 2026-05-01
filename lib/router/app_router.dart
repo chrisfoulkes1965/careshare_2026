@@ -209,7 +209,13 @@ abstract final class AppRouter {
 
         return null;
       },
+      // Web opens at `/` by default; without this, no [GoRoute] matches and the
+      // shell can paint an empty grey frame after the bootstrap spinner.
       routes: [
+        GoRoute(
+          path: "/",
+          redirect: (context, state) => "/loading",
+        ),
         GoRoute(
           path: "/loading",
           builder: (context, state) => const _LoadingScreen(),
@@ -384,6 +390,35 @@ abstract final class AppRouter {
           },
         ),
       ],
+      errorBuilder: (context, state) {
+        return Scaffold(
+          body: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    "That page isn’t available in this app.",
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 12),
+                  SelectableText(
+                    state.uri.toString(),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  FilledButton(
+                    onPressed: () => GoRouter.of(context).go("/loading"),
+                    child: const Text("Go to app"),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

@@ -428,24 +428,34 @@ final class ProfileCubit extends Cubit<ProfileState> {
     if (p.activeCareGroupId != null && p.activeCareGroupId!.isNotEmpty) {
       final hasTeam = options.any((o) => o.careGroupId == p.activeCareGroupId);
       if (!hasTeam) {
+        CareGroupOption? repair;
+        var repairTimedOut = false;
         try {
-          final repair = await _userRepository
+          repair = await _userRepository
               .fetchCareGroupOptionForActiveProfile(
                 uid: authIdentity.uid,
                 careGroupId: p.activeCareGroupId!,
               )
               .timeout(const Duration(seconds: 12));
-          if (repair != null) {
-            options = [...options, repair]..sort(
-                (a, b) => a.displayName
-                    .toLowerCase()
-                    .compareTo(b.displayName.toLowerCase()),
-              );
-          }
         } on TimeoutException {
-          // keep options as-is
+          repairTimedOut = true;
         } catch (_) {
-          // keep options as-is
+          repair = null;
+        }
+        if (repair != null) {
+          options = [...options, repair]..sort(
+              (a, b) => a.displayName
+                  .toLowerCase()
+                  .compareTo(b.displayName.toLowerCase()),
+            );
+        } else if (!repairTimedOut) {
+          // Confirmed there is no membership (or team missing) for this id —
+          // drop it so home streams do not hit permission errors while the
+          // header shows "New Caregroup".
+          try {
+            await _userRepository.clearActiveCareGroup(authIdentity.uid);
+            p = p.copyWith(activeCareGroupId: null);
+          } catch (_) {/* tolerate */}
         }
       }
     }
@@ -588,21 +598,6 @@ final class ProfileCubit extends Cubit<ProfileState> {
         print("ProfileCubit: invite auto-redeem failed: $e\n$st");
       } finally {
         _inviteRedeemWritesInProgress = false;
-      }
-
-      // Even if redeem failed, mark wizard as skipped so the invitee isn't
-      // dropped into "Who is being cared for" (the new-care-group wizard).
-      // They can retry the invite from Settings or be re-invited.
-      if (!p.wizardSkipped && !p.wizardCompleted) {
-        try {
-          await _userRepository.updateProfileFields(authIdentity.uid, {
-            "wizardSkipped": true,
-          });
-          final again = await _userRepository.fetchProfile(authIdentity.uid);
-          if (again != null) {
-            p = again;
-          }
-        } catch (_) {/* tolerate */}
       }
     }
 

@@ -10,6 +10,7 @@ import "../../../core/medication_reminders/medication_notification_service.dart"
 import "../../user/repository/user_repository.dart";
 import "../models/care_group_medication.dart";
 import "../models/medication_care_group_settings.dart";
+import "../models/medication_reminder_ack_draft.dart";
 import "../repository/medication_care_group_settings_repository.dart";
 import "../repository/medications_repository.dart";
 import "medications_state.dart";
@@ -39,12 +40,36 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
       return;
     }
     final settings = await _settingsRepository.getSettings(careGroupId);
-    await MedicationNotificationService.instance.syncMedications(
+    final nudges = await MedicationNotificationService.instance.syncMedications(
       careGroupId,
       _lastMedsForNotify,
       quietHoursStartMinute: settings.quietHoursEnabled ? settings.quietHoursStartMinute : null,
       quietHoursEndMinute: settings.quietHoursEnabled ? settings.quietHoursEndMinute : null,
     );
+    if (nudges.isEmpty) {
+      return;
+    }
+    final drafts = <MedicationReminderAckDraft>[];
+    for (final n in nudges) {
+      if (n.slotKey.isEmpty || n.medicationIds.isEmpty) {
+        continue;
+      }
+      drafts.add(
+        MedicationReminderAckDraft(
+          slotKey: n.slotKey,
+          medicationIds: n.medicationIds,
+          dueAtUtc: n.scheduledDate.toUtc(),
+        ),
+      );
+    }
+    if (drafts.isNotEmpty) {
+      try {
+        await _repository.syncMedicationReminderAckExpectations(
+          careGroupId: careGroupId,
+          drafts: drafts,
+        );
+      } catch (_) {}
+    }
   }
 
   void subscribe() {

@@ -194,14 +194,20 @@ const List<({Color background, Color iconColor})> _kDefaultToolBarChips =
   (background: Color(0xFFEEEDFE), iconColor: Color(0xFF534AB7)),
   (background: Color(0xFFE8F4ED), iconColor: Color(0xFF2E7D5A)),
   (background: Color(0xFFEDE7F6), iconColor: Color(0xFF5C4A9A)),
+  // Keep in sync with [_kCareTeamTools] count in `home_landing_view.dart`.
+  (background: Color(0xFFE3F2FD), iconColor: Color(0xFF1565C0)),
 ];
+
+/// Must match the number of header “Care team tools” menu rows.
+const int kCareTeamToolbarChipCount = 13;
 
 Color _a(Color base, int a) => base.withValues(alpha: a / 255.0);
 
 List<({Color background, Color iconColor})> _toolBarChipsForSeed(Color seed) {
-  return List<({Color background, Color iconColor})>.generate(12, (i) {
+  return List<({Color background, Color iconColor})>.generate(
+      kCareTeamToolbarChipCount, (i) {
     final h0 = HSLColor.fromColor(seed);
-    final h = (h0.hue + i * (360.0 / 12.0)) % 360.0;
+    final h = (h0.hue + i * (360.0 / kCareTeamToolbarChipCount)) % 360.0;
     var bg = h0
         .withHue(h)
         .withSaturation((h0.saturation * 0.4 + 0.28).clamp(0.2, 0.55))

@@ -110,13 +110,14 @@ service cloud.firestore {
     function homepageSectionsPolicyMapOk(p) {
       return p is map
         && p.keys().hasOnly([
-          'todaysNeeds', 'calendarEvents', 'tasks', 'medications',
+          'todaysNeeds', 'calendarEvents', 'tasks', 'chat', 'medications',
           'expenses', 'urgentTasks', 'recentActivity',
           'comingUp', 'tasksStrip', 'medicationsStrip', 'expensesStrip'
         ])
         && (!p.keys().hasAny(['todaysNeeds']) || p.todaysNeeds is bool)
         && (!p.keys().hasAny(['calendarEvents']) || p.calendarEvents is bool)
         && (!p.keys().hasAny(['tasks']) || p.tasks is bool)
+        && (!p.keys().hasAny(['chat']) || p.chat is bool)
         && (!p.keys().hasAny(['medications']) || p.medications is bool)
         && (!p.keys().hasAny(['expenses']) || p.expenses is bool)
         && (!p.keys().hasAny(['urgentTasks']) || p.urgentTasks is bool)
@@ -197,7 +198,29 @@ service cloud.firestore {
     function canReadMedicationList(careGroupId) {
       let team = careTeamId(careGroupId);
       return isCarerOrPrincipalForCareGroup(careGroupId)
-        || hasRole(team, request.auth.uid, 'power_of_attorney');
+        || hasRole(team, request.auth.uid, 'power_of_attorney')
+        || hasRole(team, request.auth.uid, 'receives_care');
+    }
+
+    /// Carer, principal, POA, group admin, or care recipient — confirm scheduled doses.
+    function canLogMedicationDoses(careGroupId) {
+      let team = careTeamId(careGroupId);
+      return hasAnyRole(team, request.auth.uid, [
+        'principal_carer',
+        'carer',
+        'care_group_administrator',
+        'power_of_attorney',
+        'receives_care',
+      ]);
+    }
+
+    function medicationAckCarerConfirmOk(careGroupId) {
+      return canLogMedicationDoses(careGroupId)
+        && resource.data.needsConfirmation == true
+        && request.resource.data.needsConfirmation == false
+        && request.resource.data.acknowledgedBy == request.auth.uid
+        && request.resource.data.acknowledgedAt is timestamp
+        && diffKeys().hasOnly(['needsConfirmation', 'acknowledgedAt', 'acknowledgedBy', 'updatedAt']);
     }
 
     /// Plain [carer] role only (not principal, POA, or care group admin) — inventory / dose logging.
@@ -643,7 +666,7 @@ service cloud.firestore {
           allow read: if isCareGroupMember(careGroupId) && canReadMedicationList(careGroupId);
 
           allow create: if isCareGroupMember(careGroupId)
-            && isCarerOrPrincipalForCareGroup(careGroupId)
+            && canLogMedicationDoses(careGroupId)
             && request.resource.data.keys().hasAll(['takenAt', 'loggedBy'])
             && request.resource.data.loggedBy == request.auth.uid
             && request.resource.data.takenAt is timestamp
@@ -653,6 +676,30 @@ service cloud.firestore {
 
           allow update, delete: if false;
         }
+      }
+
+      match /medicationReminderAcks/{ackId} {
+        allow read: if isCareGroupMember(careGroupId) && canReadMedicationList(careGroupId);
+
+        allow create: if isCareGroupMember(careGroupId) && canLogMedicationDoses(careGroupId)
+          && request.resource.data.keys().hasAll([
+            'slotKey', 'medicationIds', 'dueAt', 'needsConfirmation', 'principalAlertSent'
+          ])
+          && request.resource.data.slotKey is string
+          && request.resource.data.slotKey.size() >= 1
+          && request.resource.data.slotKey.size() <= 120
+          && request.resource.data.medicationIds is list
+          && request.resource.data.dueAt is timestamp
+          && request.resource.data.needsConfirmation == true
+          && request.resource.data.principalAlertSent == false
+          && request.resource.data.keys().hasOnly([
+            'slotKey', 'medicationIds', 'dueAt', 'needsConfirmation',
+            'principalAlertSent', 'updatedAt'
+          ]);
+
+        allow update: if isCareGroupMember(careGroupId) && medicationAckCarerConfirmOk(careGroupId);
+
+        allow delete: if false;
       }
 
       match /medicationBatchPrep/{prepId} {

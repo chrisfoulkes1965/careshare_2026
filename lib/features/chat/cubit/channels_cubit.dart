@@ -10,12 +10,16 @@ final class ChannelsCubit extends Cubit<ChannelsState> {
   ChannelsCubit({
     required ChatRepository repository,
     required this.careGroupId,
+    required this.membersCareGroupId,
     required this.uid,
   })  : _repository = repository,
         super(const ChannelsInitial());
 
   final ChatRepository _repository;
   final String careGroupId;
+
+  /// Host doc id for [members] (may differ from [careGroupId] when team/data docs are linked).
+  final String membersCareGroupId;
   final String uid;
 
   StreamSubscription<List<ChatChannel>>? _sub;
@@ -27,6 +31,12 @@ final class ChannelsCubit extends Cubit<ChannelsState> {
       return;
     }
     emit(const ChannelsLoading());
+    unawaited(
+      _repository.ensureDefaultGeneralChannel(
+        dataCareGroupId: careGroupId,
+        membersCareGroupId: membersCareGroupId,
+      ),
+    );
     unawaited(_sub?.cancel());
     _sub = _repository
         .watchMyChannels(

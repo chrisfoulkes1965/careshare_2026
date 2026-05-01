@@ -51,6 +51,14 @@ final class MedicationNotificationService {
     if (p == null) {
       return;
     }
+    if (p.startsWith("missed|")) {
+      if (_dosePayloadHandler != null) {
+        _dosePayloadHandler!(p);
+      } else {
+        _deferredDosePayloads.add(p);
+      }
+      return;
+    }
     if (p.startsWith("dose|")) {
       if (_dosePayloadHandler != null) {
         _dosePayloadHandler!(p);
@@ -166,14 +174,15 @@ final class MedicationNotificationService {
     _lastMeds = const [];
   }
 
-  Future<void> syncMedications(
+  /// Schedules local notifications and returns the planned nudges (empty when skipped).
+  Future<List<DoseNudge>> syncMedications(
     String careGroupId,
     List<CareGroupMedication> meds, {
     int? quietHoursStartMinute,
     int? quietHoursEndMinute,
   }) async {
     if (kIsWeb || !_ready) {
-      return;
+      return const [];
     }
 
     _lastCareGroupId = careGroupId;
@@ -193,7 +202,7 @@ final class MedicationNotificationService {
     }
 
     if (defaultTargetPlatform == TargetPlatform.linux) {
-      return;
+      return const [];
     }
 
     const details = NotificationDetails(
@@ -242,6 +251,7 @@ final class MedicationNotificationService {
         debugPrint("zonedSchedule dose: $e\n$st");
       }
     }
+    return nudges;
   }
 
   /// Foreground FCM: system notification is not shown; we mirror it here.

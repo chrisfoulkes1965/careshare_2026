@@ -6,6 +6,7 @@ abstract final class HomeSectionId {
   static const todaysNeeds = "todaysNeeds";
   static const calendarEvents = "calendarEvents";
   static const tasks = "tasks";
+  static const chat = "chat";
   static const medications = "medications";
   static const expenses = "expenses";
   static const urgentTasks = "urgentTasks";
@@ -15,6 +16,7 @@ abstract final class HomeSectionId {
     todaysNeeds,
     calendarEvents,
     tasks,
+    chat,
     medications,
     expenses,
     urgentTasks,
@@ -25,6 +27,7 @@ abstract final class HomeSectionId {
     todaysNeeds,
     calendarEvents,
     tasks,
+    chat,
     medications,
     expenses,
     urgentTasks,
@@ -42,6 +45,7 @@ final class HomeSectionsVisibility extends Equatable {
     this.todaysNeeds = true,
     this.calendarEvents = true,
     this.tasks = true,
+    this.chat = true,
     this.medications = true,
     this.expenses = true,
     this.urgentTasks = true,
@@ -57,6 +61,9 @@ final class HomeSectionsVisibility extends Equatable {
 
   /// Upcoming tasks strip.
   final bool tasks;
+
+  /// Care group chat channels preview.
+  final bool chat;
 
   /// Medication reminder strip.
   final bool medications;
@@ -82,6 +89,8 @@ final class HomeSectionsVisibility extends Equatable {
         return calendarEvents;
       case HomeSectionId.tasks:
         return tasks;
+      case HomeSectionId.chat:
+        return chat;
       case HomeSectionId.medications:
         return medications;
       case HomeSectionId.expenses:
@@ -154,6 +163,7 @@ final class HomeSectionsVisibility extends Equatable {
       todaysNeeds: getB(_kTodaysNeeds),
       calendarEvents: calendarEvents,
       tasks: tasksVis,
+      chat: getB(_kChat),
       medications: medicationsVis,
       expenses: expensesVis,
       urgentTasks: getB(_kUrgentTasks),
@@ -167,6 +177,7 @@ final class HomeSectionsVisibility extends Equatable {
       _kTodaysNeeds: todaysNeeds,
       _kCalendarEvents: calendarEvents,
       _kTasks: tasks,
+      _kChat: chat,
       _kMedications: medications,
       _kExpenses: expenses,
       _kUrgentTasks: urgentTasks,
@@ -181,6 +192,7 @@ final class HomeSectionsVisibility extends Equatable {
       _kTodaysNeeds: todaysNeeds,
       _kCalendarEvents: calendarEvents,
       _kTasks: tasks,
+      _kChat: chat,
       _kMedications: medications,
       _kExpenses: expenses,
       _kUrgentTasks: urgentTasks,
@@ -200,6 +212,7 @@ final class HomeSectionsVisibility extends Equatable {
       todaysNeeds: todaysNeeds && groupPolicy.todaysNeeds,
       calendarEvents: calendarEvents && groupPolicy.calendarEvents,
       tasks: tasks && groupPolicy.tasks,
+      chat: chat && groupPolicy.chat,
       medications: medications && groupPolicy.medications,
       expenses: expenses && groupPolicy.expenses,
       urgentTasks: urgentTasks && groupPolicy.urgentTasks,
@@ -220,6 +233,7 @@ final class HomeSectionsVisibility extends Equatable {
     bool? todaysNeeds,
     bool? calendarEvents,
     bool? tasks,
+    bool? chat,
     bool? medications,
     bool? expenses,
     bool? urgentTasks,
@@ -230,6 +244,7 @@ final class HomeSectionsVisibility extends Equatable {
       todaysNeeds: todaysNeeds ?? this.todaysNeeds,
       calendarEvents: calendarEvents ?? this.calendarEvents,
       tasks: tasks ?? this.tasks,
+      chat: chat ?? this.chat,
       medications: medications ?? this.medications,
       expenses: expenses ?? this.expenses,
       urgentTasks: urgentTasks ?? this.urgentTasks,
@@ -243,6 +258,7 @@ final class HomeSectionsVisibility extends Equatable {
         todaysNeeds,
         calendarEvents,
         tasks,
+        chat,
         medications,
         expenses,
         urgentTasks,
@@ -256,6 +272,7 @@ const String _kComingUp = "comingUp";
 const String _kCalendarEvents = "calendarEvents";
 const String _kTasksStrip = "tasksStrip";
 const String _kTasks = "tasks";
+const String _kChat = "chat";
 const String _kMedsStrip = "medicationsStrip";
 const String _kMedications = "medications";
 const String _kExpensesStrip = "expensesStrip";

@@ -1,6 +1,7 @@
 import "package:flutter_local_notifications/flutter_local_notifications.dart";
 import "package:timezone/timezone.dart" as tz;
 
+import "../../features/medications/logic/medication_reminder_ack_id.dart";
 import "../../features/medications/models/care_group_medication.dart";
 import "medication_quiet_hours.dart";
 
@@ -12,6 +13,8 @@ final class DoseNudge {
     required this.scheduledDate,
     required this.dateTimeMatch,
     required this.body,
+    required this.slotKey,
+    required this.medicationIds,
   });
 
   final int notificationId;
@@ -19,6 +22,10 @@ final class DoseNudge {
   final tz.TZDateTime scheduledDate;
   final DateTimeComponents? dateTimeMatch;
   final String body;
+
+  /// Occurrence key shared with [medicationReminderAcks] and dose log [slotKey].
+  final String slotKey;
+  final List<String> medicationIds;
 }
 
 int doseNudgeHashId(String careGroupId, String groupKey) {
@@ -95,9 +102,12 @@ tz.TZDateTime _nextDailyTime(int hour, int minute) {
   return d;
 }
 
-String _pay(String careGroupId, Set<String> ids) {
+String _pay(String careGroupId, Set<String> ids, String slotKey) {
   final s = ids.toList()..sort();
-  return "dose|$careGroupId|${s.join(",")}";
+  if (slotKey.isEmpty) {
+    return "dose|$careGroupId|${s.join(",")}";
+  }
+  return "dose|$careGroupId|${s.join(",")}|$slotKey";
 }
 
 List<DoseNudge> buildDoseNudges({
@@ -129,13 +139,17 @@ List<DoseNudge> buildDoseNudges({
       quietHoursStartMinute: quietHoursStartMinute,
       quietHoursEndMinute: quietHoursEndMinute,
     );
+    final slotKey = doseSlotKeyFromTz(adjusted);
+    final medIds = idSet.toList()..sort();
     out.add(
       DoseNudge(
         notificationId: doseNudgeHashId(careGroupId, gk),
-        payload: _pay(careGroupId, idSet),
+        payload: _pay(careGroupId, idSet, slotKey),
         scheduledDate: adjusted,
         dateTimeMatch: nullOnWin(match),
         body: _bodyFor(nameList),
+        slotKey: slotKey,
+        medicationIds: medIds,
       ),
     );
   }
