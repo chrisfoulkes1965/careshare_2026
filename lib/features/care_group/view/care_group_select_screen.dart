@@ -29,12 +29,26 @@ class CareGroupSelectScreen extends StatelessWidget {
         if (options.isEmpty) {
           return Scaffold(
             appBar: AppBar(title: const Text("Choose a care group")),
-            body: const Center(
+            body: Center(
               child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Text(
-                  "No care groups were found for your account. Complete setup, or check that you have accepted an invite.",
-                  textAlign: TextAlign.center,
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      "No care groups were found for your account. Create one, "
+                      "complete setup, or check that you have accepted an invite.",
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    ),
+                    const SizedBox(height: 20),
+                    FilledButton(
+                      onPressed: () {
+                        context.push("/user-settings/create-care-group");
+                      },
+                      child: const Text("Create a care group"),
+                    ),
+                  ],
                 ),
               ),
             ),

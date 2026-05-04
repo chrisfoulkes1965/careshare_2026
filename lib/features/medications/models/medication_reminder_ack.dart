@@ -7,6 +7,7 @@ final class MedicationReminderAck {
     required this.medicationIds,
     this.dueAt,
     required this.needsConfirmation,
+    this.inventoryAdjustedAt,
   });
 
   final String id;
@@ -14,6 +15,9 @@ final class MedicationReminderAck {
   final List<String> medicationIds;
   final DateTime? dueAt;
   final bool needsConfirmation;
+
+  /// When on-hand stock was reduced for this scheduled slot (without user confirmation).
+  final DateTime? inventoryAdjustedAt;
 
   static MedicationReminderAck fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> d) {
     final m = d.data();
@@ -33,12 +37,18 @@ final class MedicationReminderAck {
     if (ts is Timestamp) {
       due = ts.toDate();
     }
+    final invTs = m["inventoryAdjustedAt"];
+    DateTime? invAt;
+    if (invTs is Timestamp) {
+      invAt = invTs.toDate();
+    }
     return MedicationReminderAck(
       id: d.id,
       slotKey: (m["slotKey"] as String?)?.trim() ?? "",
       medicationIds: ids,
       dueAt: due,
       needsConfirmation: m["needsConfirmation"] != false,
+      inventoryAdjustedAt: invAt,
     );
   }
 }

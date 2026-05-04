@@ -918,9 +918,7 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
                       Padding(
                         padding: const EdgeInsets.only(bottom: 6),
                         child: Text(
-                          e.takenAt != null
-                              ? e.takenAt!.toLocal().toIso8601String().replaceFirst("T", " ").split(".").first
-                              : "—",
+                          "${e.takenAt != null ? e.takenAt!.toLocal().toIso8601String().replaceFirst("T", " ").split(".").first : "—"}${e.scheduledDeduction ? " (scheduled deduction)" : ""}",
                           style: Theme.of(context).textTheme.bodySmall,
                         ),
                       ),

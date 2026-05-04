@@ -11,8 +11,14 @@ final class CareGroupTask {
     this.assignedTo,
     this.notes = "",
     this.dueAt,
+    this.size = CareGroupTask.tierMedium,
+    this.urgency = CareGroupTask.tierMedium,
     this.attachmentUrls = const [],
   });
+
+  static const String tierLow = "low";
+  static const String tierMedium = "medium";
+  static const String tierHigh = "high";
 
   final String id;
   final String title;
@@ -22,11 +28,26 @@ final class CareGroupTask {
   final String? assignedTo;
   final String notes;
   final DateTime? dueAt;
+  /// Effort / scope: `low` | `medium` | `high`.
+  final String size;
+  /// Importance / time sensitivity: `low` | `medium` | `high`.
+  final String urgency;
   final List<String> attachmentUrls;
 
   static List<String> _stringList(Object? v) {
     if (v is! List) return const [];
     return v.map((e) => e.toString()).toList(growable: false);
+  }
+
+  static String _normalizeTier(Object? raw, String fallback) {
+    if (raw == null) {
+      return fallback;
+    }
+    final s = (raw is String ? raw : raw.toString()).trim().toLowerCase();
+    if (s == tierLow || s == tierMedium || s == tierHigh) {
+      return s;
+    }
+    return fallback;
   }
 
   static CareGroupTask fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> d) {
@@ -42,6 +63,8 @@ final class CareGroupTask {
       assignedTo: (data["assignedTo"] as String?)?.trim(),
       notes: (data["notes"] as String?)?.trim() ?? "",
       dueAt: due is Timestamp ? due.toDate() : null,
+      size: _normalizeTier(data["size"], tierMedium),
+      urgency: _normalizeTier(data["urgency"], tierMedium),
       attachmentUrls: _stringList(data["attachmentUrls"]),
     );
   }

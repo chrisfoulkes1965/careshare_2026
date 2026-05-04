@@ -130,7 +130,7 @@ service cloud.firestore {
 
     function careGroupAdministratorCosmeticPatchOk() {
       let dk = diffKeys();
-      return dk.hasOnly(['name', 'themeColor', 'groupCalendar', 'homepageSectionsPolicy'])
+      return dk.hasOnly(['name', 'themeColor', 'groupCalendar', 'homepageSectionsPolicy', 'photoUrl'])
         && (!dk.hasAny(['homepageSectionsPolicy'])
           || !request.resource.data.keys().hasAny(['homepageSectionsPolicy'])
           || homepageSectionsPolicyMapOk(request.resource.data.homepageSectionsPolicy));
@@ -157,13 +157,8 @@ service cloud.firestore {
 
     function isExpenseReaderForCareGroup(careGroupId) {
       let team = careTeamId(careGroupId);
-      // Conservative default from matrix: plain carers excluded until product confirms.
-      return hasAnyRole(team, request.auth.uid, [
-        'principal_carer',
-        'financial_manager',
-        'power_of_attorney',
-        'care_group_administrator',
-      ]);
+      // Product (BACKLOG): expense history / list reads — financial_manager only.
+      return hasRole(team, request.auth.uid, 'financial_manager');
     }
 
     function isPrincipalOrPoaForCareGroup(careGroupId) {
@@ -188,6 +183,35 @@ service cloud.firestore {
       // TODO: align recipientId semantics (profile id vs auth uid) on tasks.
       return (task.keys().hasAny(['assignedTo']) && task.assignedTo == request.auth.uid)
         || (task.keys().hasAny(['recipientId']) && task.recipientId == request.auth.uid);
+    }
+
+    function _taskStatusIsDone(data) {
+      return data.keys().hasAny(['status'])
+        && (data.status == 'done' || data.status == 'completed');
+    }
+
+    /// When first marking a task done, [completedBy] must be the signed-in user (kudos target).
+    function taskCompletedByValidOnTransition() {
+      let beforeDone = _taskStatusIsDone(resource.data);
+      let afterDone = _taskStatusIsDone(request.resource.data);
+      return !(afterDone && !beforeDone)
+        || (
+          request.resource.data.keys().hasAny(['completedBy'])
+          && request.resource.data.completedBy is string
+          && request.resource.data.completedBy.size() >= 1
+          && request.resource.data.completedBy.size() <= 128
+          && request.resource.data.completedBy == request.auth.uid
+        );
+    }
+
+    /// Optional task fields: size and urgency must be one of low / medium / high.
+    function taskSizeUrgencyFieldsValid(data) {
+      return (!data.keys().hasAny(['size']) || (
+          data.size is string && data.size in ['low', 'medium', 'high']
+        ))
+        && (!data.keys().hasAny(['urgency']) || (
+          data.urgency is string && data.urgency in ['low', 'medium', 'high']
+        ));
     }
 
     function noteRequiresPrincipalOrPoa(note) {
@@ -223,6 +247,16 @@ service cloud.firestore {
         && diffKeys().hasOnly(['needsConfirmation', 'acknowledgedAt', 'acknowledgedBy', 'updatedAt']);
     }
 
+    /// Stock reduced when dose became due; confirmation banner may still be pending.
+    function medicationAckInventoryAdjustOk(careGroupId) {
+      return canLogMedicationDoses(careGroupId)
+        && resource.data.needsConfirmation == true
+        && request.resource.data.needsConfirmation == true
+        && request.resource.data.inventoryAdjustedAt is timestamp
+        && request.resource.data.inventoryAdjustedBy == request.auth.uid
+        && diffKeys().hasOnly(['inventoryAdjustedAt', 'inventoryAdjustedBy', 'updatedAt']);
+    }
+
     /// Plain [carer] role only (not principal, POA, or care group admin) — inventory / dose logging.
     function isCarerOnlyMember(careGroupId) {
       let team = careTeamId(careGroupId);
@@ -239,7 +273,7 @@ service cloud.firestore {
       return [
         'name', 'careRecipientId', 'medicationForm', 'dosage', 'instructions', 'notes', 'photoUrl',
         'reminderEnabled', 'reminderTimes', 'reminderSchedule', 'reminderWeekdays', 'reminderMonthDays',
-        'quantityOnHand', 'lowStockThreshold',
+        'quantityOnHand', 'lowStockThreshold', 'lastStockDate',
       ];
     }
 
@@ -287,6 +321,9 @@ service cloud.firestore {
           && request.resource.data.lowStockThreshold >= 0
           && request.resource.data.lowStockThreshold < 2000000000
         ))
+        && (!request.resource.data.keys().hasAny(['lastStockDate']) || (
+          request.resource.data.lastStockDate is timestamp
+        ))
         && (!request.resource.data.keys().hasAny(['careRecipientId']) || (
           request.resource.data.careRecipientId is string
           && request.resource.data.careRecipientId.size() >= 1
@@ -296,7 +333,8 @@ service cloud.firestore {
 
     function medicationCarerQuantityPatchOk(careGroupId) {
       return isCarerOnlyMember(careGroupId)
-        && diffKeys().hasOnly(['quantityOnHand'])
+        && (diffKeys().hasOnly(['quantityOnHand'])
+          || diffKeys().hasOnly(['quantityOnHand', 'lastStockDate']))
         && medicationCreatedStable()
         && (
           !request.resource.data.keys().hasAny(['quantityOnHand'])
@@ -305,14 +343,17 @@ service cloud.firestore {
             && request.resource.data.quantityOnHand >= 0
             && request.resource.data.quantityOnHand < 2000000000
           )
-        );
+        )
+        && (!request.resource.data.keys().hasAny(['lastStockDate']) || (
+          request.resource.data.lastStockDate is timestamp
+        ));
     }
 
     function medicationCreateKeysOk() {
       return request.resource.data.keys().hasOnly([
         'name', 'careRecipientId', 'medicationForm', 'dosage', 'instructions', 'notes', 'photoUrl',
         'reminderEnabled', 'reminderTimes', 'reminderSchedule', 'reminderWeekdays', 'reminderMonthDays',
-        'quantityOnHand', 'lowStockThreshold', 'createdBy', 'createdAt',
+        'quantityOnHand', 'lowStockThreshold', 'lastStockDate', 'createdBy', 'createdAt',
       ]);
     }
 
@@ -555,7 +596,7 @@ service cloud.firestore {
           )
           || (
             isPrincipalCarerOrCareGroupAdminForCareGroup(careGroupId)
-            && !diffKeys().hasAny(['name', 'themeColor', 'groupCalendar', 'homepageSectionsPolicy'])
+            && !diffKeys().hasAny(['name', 'themeColor', 'groupCalendar', 'homepageSectionsPolicy', 'photoUrl'])
             && careGroupLegacyLinkFieldStable()
           )
         );
@@ -572,11 +613,14 @@ service cloud.firestore {
         allow create: if isCareGroupMember(careGroupId)
           && isCarerOrPrincipalForCareGroup(careGroupId)
           && request.resource.data.keys().hasAll(['title', 'status', 'createdBy', 'createdAt'])
-          && request.resource.data.createdBy == request.auth.uid;
+          && request.resource.data.createdBy == request.auth.uid
+          && taskSizeUrgencyFieldsValid(request.resource.data);
 
         allow update: if isCareGroupMember(careGroupId)
           && isCarerOrPrincipalForCareGroup(careGroupId)
-          && request.resource.data.createdBy == resource.data.createdBy;
+          && request.resource.data.createdBy == resource.data.createdBy
+          && taskCompletedByValidOnTransition()
+          && taskSizeUrgencyFieldsValid(request.resource.data);
 
         allow delete: if isPrincipalCarerOrCareGroupAdminForCareGroup(careGroupId);
       }
@@ -661,6 +705,9 @@ service cloud.firestore {
             request.resource.data.lowStockThreshold is int
             && request.resource.data.lowStockThreshold >= 0
             && request.resource.data.lowStockThreshold < 2000000000
+          ))
+          && (!request.resource.data.keys().hasAny(['lastStockDate']) || (
+            request.resource.data.lastStockDate is timestamp
           ));
 
         allow update: if isCareGroupMember(careGroupId) && (
@@ -678,9 +725,11 @@ service cloud.firestore {
             && request.resource.data.keys().hasAll(['takenAt', 'loggedBy'])
             && request.resource.data.loggedBy == request.auth.uid
             && request.resource.data.takenAt is timestamp
-            && request.resource.data.keys().hasOnly(['takenAt', 'loggedBy', 'slotKey'])
+            && request.resource.data.keys().hasOnly(['takenAt', 'loggedBy', 'slotKey', 'scheduledDeduction'])
             && (!request.resource.data.keys().hasAny(['slotKey'])
-              || (request.resource.data.slotKey is string && request.resource.data.slotKey.size() <= 200));
+              || (request.resource.data.slotKey is string && request.resource.data.slotKey.size() <= 200))
+            && (!request.resource.data.keys().hasAny(['scheduledDeduction'])
+              || request.resource.data.scheduledDeduction == true);
 
           allow update, delete: if false;
         }
@@ -705,7 +754,8 @@ service cloud.firestore {
             'principalAlertSent', 'updatedAt'
           ]);
 
-        allow update: if isCareGroupMember(careGroupId) && medicationAckCarerConfirmOk(careGroupId);
+        allow update: if isCareGroupMember(careGroupId)
+          && (medicationAckCarerConfirmOk(careGroupId) || medicationAckInventoryAdjustOk(careGroupId));
 
         allow delete: if false;
       }

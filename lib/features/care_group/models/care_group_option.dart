@@ -14,6 +14,7 @@ final class CareGroupOption extends Equatable {
     this.roles = const [],
     this.themeColor,
     this.homepageSectionsPolicy,
+    this.photoUrl,
   });
 
   final String careGroupId;
@@ -55,6 +56,9 @@ final class CareGroupOption extends Equatable {
   /// Null means no group-level restriction (members follow their own preferences).
   final HomeSectionsVisibility? homepageSectionsPolicy;
 
+  /// Optional `careGroups/{dataCareGroupId}.photoUrl` — shown as the care group avatar on home.
+  final String? photoUrl;
+
   @override
   List<Object?> get props => [
         careGroupId,
@@ -63,5 +67,6 @@ final class CareGroupOption extends Equatable {
         roles,
         themeColor,
         homepageSectionsPolicy,
+        photoUrl,
       ];
 }

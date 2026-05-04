@@ -486,6 +486,63 @@ exports.onExpensePaymentClaimCreatedEmail = onDocumentCreated(
   }
 );
 
+/**
+ * @param {string|undefined} s
+ * @return {boolean}
+ */
+function taskStatusIsDone(s) {
+  if (s == null) {
+    return false;
+  }
+  const t = String(s).toLowerCase();
+  return t === "done" || t === "completed";
+}
+
+/**
+ * +1 kudos to the member who completed the task (see [completedBy] on the task doc).
+ * Firestore rules block direct client updates to [kudosScore] on members.
+ */
+exports.onCareGroupTaskCompletedKudos = onDocumentUpdated(
+  {
+    document: "careGroups/{careGroupId}/tasks/{taskId}",
+    region: "us-central1",
+  },
+  async (event) => {
+    const be = event.data.before;
+    const af = event.data.after;
+    if (!af.exists) {
+      return;
+    }
+    const b = be.exists ? (be.data() || {}) : {};
+    const a = af.data() || {};
+    if (taskStatusIsDone(b.status) || !taskStatusIsDone(a.status)) {
+      return;
+    }
+    const uid = a.completedBy != null ? String(a.completedBy).trim() : "";
+    if (!uid) {
+      return;
+    }
+    const {careGroupId} = event.params;
+    const memRef = db.doc("careGroups/" + careGroupId + "/members/" + uid);
+    let snap;
+    try {
+      snap = await memRef.get();
+    } catch (e) {
+      console.error("onCareGroupTaskCompletedKudos: member read failed", e);
+      return;
+    }
+    if (!snap.exists) {
+      console.warn("onCareGroupTaskCompletedKudos: no members doc for uid", uid);
+      return;
+    }
+    try {
+      await memRef.update({kudosScore: FieldValue.increment(1)});
+    } catch (e) {
+      console.error("onCareGroupTaskCompletedKudos: kudos update failed", e);
+    }
+  }
+);
+
 const {syncToGoogleCalendar} = require("./gcal/syncToGoogleCalendar");
 const {syncInboundGoogleCalendar} = require("./gcal/syncInboundGoogleCalendar");
 exports.syncToGoogleCalendar = syncToGoogleCalendar;

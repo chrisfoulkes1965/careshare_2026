@@ -198,6 +198,17 @@ void showUserAccountMenu(
                       context.push("/user-settings/care-groups");
                     },
                   ),
+                  ListTile(
+                    leading: const Icon(Icons.add_circle_outline),
+                    title: const Text("Create a new care group"),
+                    subtitle: const Text(
+                      "Start another care team you organise",
+                    ),
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      context.push("/user-settings/create-care-group");
+                    },
+                  ),
                 ],
                 ListTile(
                   leading: const Icon(Icons.lock_outline),

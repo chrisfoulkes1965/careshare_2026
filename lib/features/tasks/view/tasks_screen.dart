@@ -12,6 +12,39 @@ import "../models/care_group_task.dart";
 import "../repository/task_repository.dart";
 import "task_editor_sheet.dart";
 
+IconData _taskSizeIcon(String tier) {
+  switch (tier) {
+    case CareGroupTask.tierLow:
+      return Icons.looks_one;
+    case CareGroupTask.tierHigh:
+      return Icons.looks_3;
+    default:
+      return Icons.looks_two;
+  }
+}
+
+IconData _taskUrgencyIcon(String tier) {
+  switch (tier) {
+    case CareGroupTask.tierLow:
+      return Icons.low_priority;
+    case CareGroupTask.tierHigh:
+      return Icons.priority_high;
+    default:
+      return Icons.remove;
+  }
+}
+
+String _taskTierTitle(String tier) {
+  switch (tier) {
+    case CareGroupTask.tierLow:
+      return "Low";
+    case CareGroupTask.tierHigh:
+      return "High";
+    default:
+      return "Medium";
+  }
+}
+
 class TasksScreen extends StatelessWidget {
   const TasksScreen({super.key});
 
@@ -178,7 +211,9 @@ class _TasksView extends StatelessWidget {
     CareGroupTask t,
     Map<String, String> nameBy,
   ) {
-    final self = _subtitleLines(t, nameBy);
+    final detail = _taskDetailLines(t, nameBy);
+    final overdue =
+        t.dueAt != null && !t.isDone && t.dueAt!.isBefore(DateTime.now());
     return Card(
       child: ListTile(
         onTap: () => _openEditor(context, t),
@@ -189,21 +224,73 @@ class _TasksView extends StatelessWidget {
             color: t.isDone ? AppColors.grey500 : null,
           ),
         ),
-        subtitle: self == null
-            ? null
-            : Text(
-                self,
-                style: Theme.of(context).textTheme.bodySmall,
-                maxLines: 4,
-                overflow: TextOverflow.ellipsis,
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                Tooltip(
+                  message: "Size: ${_taskTierTitle(t.size)}",
+                  child: Icon(
+                    _taskSizeIcon(t.size),
+                    size: 20,
+                    color: t.isDone ? AppColors.grey500 : null,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Tooltip(
+                  message: "Urgency: ${_taskTierTitle(t.urgency)}",
+                  child: Icon(
+                    _taskUrgencyIcon(t.urgency),
+                    size: 20,
+                    color: t.isDone ? AppColors.grey500 : null,
+                  ),
+                ),
+                if (t.dueAt != null) ...[
+                  const SizedBox(width: 12),
+                  Tooltip(
+                    message: "Due ${_formatDateTime(t.dueAt!)}",
+                    child: Icon(
+                      Icons.event,
+                      size: 20,
+                      color: t.isDone
+                          ? AppColors.grey500
+                          : (overdue
+                              ? Theme.of(context).colorScheme.error
+                              : null),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+            if (detail != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  detail,
+                  style: Theme.of(context).textTheme.bodySmall,
+                  maxLines: 4,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-        isThreeLine: self != null && self.contains("\n"),
+          ],
+        ),
+        isThreeLine: detail != null && detail.contains("\n"),
         leading: Checkbox(
           value: t.isDone,
           onChanged: (v) async {
             if (v == null) return;
             try {
               await context.read<TasksCubit>().setDone(t.id, v);
+              if (!context.mounted) return;
+              if (v) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text("Nice work! You earned a kudo."),
+                  ),
+                );
+              }
             } catch (e) {
               if (!context.mounted) return;
               ScaffoldMessenger.of(context).showSnackBar(
@@ -251,7 +338,7 @@ class _TasksView extends StatelessWidget {
     );
   }
 
-  String? _subtitleLines(CareGroupTask t, Map<String, String> nameBy) {
+  String? _taskDetailLines(CareGroupTask t, Map<String, String> nameBy) {
     final parts = <String>[];
     if (t.assignedTo != null && t.assignedTo!.isNotEmpty) {
       final n = nameBy[t.assignedTo!];
@@ -260,9 +347,6 @@ class _TasksView extends StatelessWidget {
       } else {
         parts.add("Assigned");
       }
-    }
-    if (t.dueAt != null) {
-      parts.add("Due ${_formatDateTime(t.dueAt!)}");
     }
     if (t.attachmentUrls.isNotEmpty) {
       parts.add("${t.attachmentUrls.length} file${t.attachmentUrls.length == 1 ? "" : "s"}");

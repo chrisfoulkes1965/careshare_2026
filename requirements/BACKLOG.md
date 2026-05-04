@@ -100,7 +100,7 @@ Everything below is either **partial** (needs completion to match the spec) or *
 
 ## 10. Expenses and careGroup money
 
-- **Expenses** (`expenses`): create by principal / **financial_manager**; read visibility for **carer** and **POA** per product sign-off (matrix default: not all carers see history unless you say so).
+- **Expenses** (`expenses`): create by principal / **financial_manager**; **expense history / list reads:** **financial_manager** only — not **principal**, **carer**, or **POA** unless product revisits this.
 - **Update/delete** rules: who is payer; financial approver paths.
 - Optional **receipts** in **Storage** with matching metadata (see Storage rules).
 
@@ -166,12 +166,11 @@ Everything below is either **partial** (needs completion to match the spec) or *
 
 ## Open questions (from matrix — block before locking rules in production)
 
-1. **Expenses:** can all **carers** see expense history, or only **financial_manager** + **principal**?  only financial manager
-2. **Limited recipient users:** which collections are readable (chat, documents, meetings, full tasks vs **assigned** only)?  
-3. **Simple Mode:** one storage location — `users` only, `members` only, or both?  
-4. **Tasks:** soft-delete vs `archived` — who can transition?  
-5. **Kudos score:** any client write, or **Function-only**?  
-6. **Journal / meetings / calendar:** single mental model for users (merge vs separate surfaces)?
+1. **Limited recipient users:** which collections are readable (chat, documents, meetings, full tasks vs **assigned** only)?  
+2. **Simple Mode:** one storage location — `users` only, `members` only, or both?  
+3. **Tasks:** soft-delete vs `archived` — who can transition?  
+4. **Kudos score:** any client write, or **Function-only**?  
+5. **Journal / meetings / calendar:** single mental model for users (merge vs separate surfaces)?
 
 ---
 

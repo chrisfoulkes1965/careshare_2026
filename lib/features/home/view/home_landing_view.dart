@@ -1,4 +1,4 @@
-import "dart:async" show unawaited;
+import "dart:async" show Timer, unawaited;
 
 import "package:flutter/material.dart";
 import "package:flutter/services.dart";
@@ -40,7 +40,11 @@ import "../../chat/repository/chat_repository.dart";
 import "../../user/models/home_sections_visibility.dart";
 import "../../user/models/user_profile.dart";
 import "../../user/view/user_account_menu.dart";
+import "../../user/view/widgets/care_group_avatar.dart";
 import "../../user/view/widgets/care_user_avatar.dart";
+
+bool _canViewExpenseHistory(CareGroupMember? me) =>
+    me != null && me.roles.contains("financial_manager");
 
 String _timeGreeting() {
   final h = DateTime.now().hour;
@@ -1208,6 +1212,52 @@ String _initialsForName(String name) {
   return (parts.first[0] + parts.last[0]).toUpperCase();
 }
 
+/// Runs overdue dose stock adjustments while the home tab is open (no need to open Meds).
+class _SyncScheduledMedicationInventory extends StatefulWidget {
+  const _SyncScheduledMedicationInventory({
+    required this.careGroupDataId,
+    required this.medicationsRepository,
+    required this.child,
+  });
+
+  final String careGroupDataId;
+  final MedicationsRepository medicationsRepository;
+  final Widget child;
+
+  @override
+  State<_SyncScheduledMedicationInventory> createState() =>
+      _SyncScheduledMedicationInventoryState();
+}
+
+class _SyncScheduledMedicationInventoryState extends State<_SyncScheduledMedicationInventory> {
+  Timer? _timer;
+
+  void _kick() {
+    if (!widget.medicationsRepository.isAvailable) {
+      return;
+    }
+    unawaited(
+      widget.medicationsRepository.applyScheduledDoseInventoryForOverdueAcks(widget.careGroupDataId),
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _kick());
+    _timer = Timer.periodic(const Duration(minutes: 2), (_) => _kick());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
 /// Care group “landing” layout inspired by the warm homepage mockup.
 class HomeLandingView extends StatelessWidget {
   const HomeLandingView({
@@ -1241,6 +1291,26 @@ class HomeLandingView extends StatelessWidget {
       activeThemeArgb: pr.activeCareGroupThemeArgb,
     );
     final darkHeader = headerStyle.background.computeLuminance() < 0.5;
+
+    Widget homeConfigurableLanding() {
+      return _HomeConfigurableLandingSections(
+        homeSections: profile.resolvedHomeSections.intersectGroupHomepagePolicy(
+          pr.activeCareGroupOption?.homepageSectionsPolicy,
+        ),
+        memberListCareGroupId: memberDocId,
+        dataCareGroupId: dataId,
+        currentUserUid: profile.uid,
+        membersRepository: context.read<MembersRepository>(),
+        taskRepository: context.read<TaskRepository>(),
+        meetingsRepository: context.read<MeetingsRepository>(),
+        linkedCalendarEventsRepository: context.read<LinkedCalendarEventsRepository>(),
+        medicationsRepository: context.read<MedicationsRepository>(),
+        expensesRepository: context.read<ExpensesRepository>(),
+        journalRepository: context.read<JournalRepository>(),
+        notesRepository: context.read<NotesRepository>(),
+        chatRepository: context.read<ChatRepository>(),
+      );
+    }
 
     return CareGroupHomeStyleScope(
       style: homeStyle,
@@ -1355,26 +1425,13 @@ class HomeLandingView extends StatelessWidget {
                 ],
                 Padding(
                   padding: const EdgeInsets.fromLTRB(18, 0, 18, 0),
-                  child: _HomeConfigurableLandingSections(
-                    homeSections: profile.resolvedHomeSections
-                        .intersectGroupHomepagePolicy(
-                      pr.activeCareGroupOption?.homepageSectionsPolicy,
-                    ),
-                    memberListCareGroupId: memberDocId,
-                    dataCareGroupId: dataId,
-                    currentUserUid: profile.uid,
-                    membersRepository: context.read<MembersRepository>(),
-                    taskRepository: context.read<TaskRepository>(),
-                    meetingsRepository: context.read<MeetingsRepository>(),
-                    linkedCalendarEventsRepository:
-                        context.read<LinkedCalendarEventsRepository>(),
-                    medicationsRepository:
-                        context.read<MedicationsRepository>(),
-                    expensesRepository: context.read<ExpensesRepository>(),
-                    journalRepository: context.read<JournalRepository>(),
-                    notesRepository: context.read<NotesRepository>(),
-                    chatRepository: context.read<ChatRepository>(),
-                  ),
+                  child: dataId != null && dataId.isNotEmpty
+                      ? _SyncScheduledMedicationInventory(
+                          careGroupDataId: dataId,
+                          medicationsRepository: context.read<MedicationsRepository>(),
+                          child: homeConfigurableLanding(),
+                        )
+                      : homeConfigurableLanding(),
                 ),
                 const SizedBox(height: 16),
                 Padding(
@@ -1523,6 +1580,15 @@ class _Header extends StatelessWidget {
                 errorBuilder: (context, error, stackTrace) {
                   return Icon(Icons.spa_outlined, size: 36, color: h.logoTint);
                 },
+              ),
+              const SizedBox(width: 10),
+              CareGroupAvatar(
+                radius: headerActionSize / 2,
+                photoUrl: pr.activeCareGroupOption?.photoUrl,
+                fallbackName: groupName,
+                backgroundColor: h.avatarMaterialColor,
+                foregroundColor: h.onBackground,
+                photoBackgroundColor: h.avatarRingColor,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -1749,27 +1815,25 @@ const _kCareTeamTools = <(IconData, String, String)>[
 ];
 
 /// [CareGroupHomePageStyle.toolBarChips] must cover every [_kCareTeamTools] row;
-/// pad so menu indexing can never go out of range (avoids web/header edge cases).
+/// Always returns exactly [_kCareTeamTools.length] entries so “Care team tools”
+/// menu indexing can never run past the chip list (e.g. after cold start / notification).
 List<({Color background, Color iconColor})> _toolbarChipsForCareTeamMenu(
   List<({Color background, Color iconColor})> chips,
 ) {
   final need = _kCareTeamTools.length;
-  if (chips.length >= need) {
-    return chips;
+  final fallback = (
+    background: AppColors.tealLight,
+    iconColor: AppColors.tealPrimary,
+  );
+  final pad = chips.isEmpty ? fallback : chips.last;
+  final out = List<({Color background, Color iconColor})>.from(chips);
+  while (out.length < need) {
+    out.add(pad);
   }
-  final pad = chips.isEmpty
-      ? (
-          background: AppColors.tealLight,
-          iconColor: AppColors.tealPrimary,
-        )
-      : chips.last;
-  return [
-    ...chips,
-    ...List<({Color background, Color iconColor})>.filled(
-      need - chips.length,
-      pad,
-    ),
-  ];
+  if (out.length > need) {
+    out.removeRange(need, out.length);
+  }
+  return out;
 }
 
 class _SectionHeader extends StatelessWidget {
@@ -2156,8 +2220,11 @@ class _HomeConfigurableLandingSections extends StatelessWidget {
                                   const <CareGroupMedication>[],
                                 ),
                           builder: (context, medSnap) {
+                            final me = membersByUid[currentUserUid];
+                            final watchExpenses = expensesRepository.isAvailable &&
+                                _canViewExpenseHistory(me);
                             return StreamBuilder<List<CareGroupExpense>>(
-                              stream: expensesRepository.isAvailable
+                              stream: watchExpenses
                                   ? expensesRepository.watchExpenses(dataCg)
                                   : Stream<List<CareGroupExpense>>.value(
                                       const <CareGroupExpense>[],
@@ -2168,7 +2235,7 @@ class _HomeConfigurableLandingSections extends StatelessWidget {
                                     ? const <CareGroupMedication>[]
                                     : (medSnap.data ?? const []);
                                 final exps = (expSnap.hasError &&
-                                        expensesRepository.isAvailable)
+                                        watchExpenses)
                                     ? const <CareGroupExpense>[]
                                     : (expSnap.data ?? const []);
 
@@ -2192,7 +2259,7 @@ class _HomeConfigurableLandingSections extends StatelessWidget {
                                 final medsErr = medSnap.hasError &&
                                     medicationsRepository.isAvailable;
                                 final expensesErr = expSnap.hasError &&
-                                    expensesRepository.isAvailable;
+                                    watchExpenses;
 
                                 return Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,

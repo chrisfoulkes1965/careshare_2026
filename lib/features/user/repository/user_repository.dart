@@ -511,6 +511,73 @@ class UserRepository {
     }
   }
 
+  static const int _careGroupAvatarMaxBytes = 8 * 1024 * 1024;
+
+  /// Uploads to Storage and sets `careGroups/{dataCareGroupDocId}.photoUrl`.
+  ///
+  /// [storageCareGroupDocId] is the `careGroups` document id used in the Storage path
+  /// (typically [CareGroupOption.careGroupId] where `members/{uid}` lives). It may differ
+  /// from [dataCareGroupDocId] when a shell doc links to shared data (must match Storage rules).
+  /// Firestore: [care_group_administrator] only (see rules).
+  Future<void> uploadAndSetCareGroupAvatarPhoto({
+    required String dataCareGroupDocId,
+    required String storageCareGroupDocId,
+    required Uint8List bytes,
+    String? mimeType,
+  }) async {
+    if (!_firebaseReady) {
+      throw StateError("Firebase is not configured.");
+    }
+    if (bytes.isEmpty) {
+      throw ArgumentError("Choose an image file.");
+    }
+    if (bytes.length > _careGroupAvatarMaxBytes) {
+      throw ArgumentError("Photo must be 8 MB or smaller.");
+    }
+    final mt = mimeType?.toLowerCase().trim() ?? "";
+    String ext = "jpg";
+    String contentType = "image/jpeg";
+    if (mt.contains("png")) {
+      ext = "png";
+      contentType = "image/png";
+    } else if (mt.contains("webp")) {
+      ext = "webp";
+      contentType = "image/webp";
+    } else if (mt.contains("gif")) {
+      ext = "gif";
+      contentType = "image/gif";
+    }
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    final storageRef = FirebaseStorage.instance
+        .ref()
+        .child("careGroups/$storageCareGroupDocId/group_avatar/${stamp}_avatar.$ext");
+    await storageRef.putData(bytes, SettableMetadata(contentType: contentType));
+    final url = await storageRef.getDownloadURL();
+    await FirebaseFirestore.instance
+        .collection("careGroups")
+        .doc(dataCareGroupDocId)
+        .update({"photoUrl": url.trim()});
+  }
+
+  /// Clears `careGroups/{dataCareGroupDocId}.photoUrl` and best-effort deletes the prior Storage object.
+  Future<void> clearCareGroupAvatarPhoto(String dataCareGroupDocId) async {
+    if (!_firebaseReady) return;
+    final ref = FirebaseFirestore.instance
+        .collection("careGroups")
+        .doc(dataCareGroupDocId);
+    final snap = await ref.get();
+    final prev = (snap.data()?["photoUrl"] as String?)?.trim();
+    await ref.update({"photoUrl": FieldValue.delete()});
+    if (prev != null &&
+        prev.isNotEmpty &&
+        prev.startsWith("http") &&
+        prev.contains("firebasestorage")) {
+      try {
+        await FirebaseStorage.instance.refFromURL(prev).delete();
+      } catch (_) {}
+    }
+  }
+
   /// Persists [UserProfile.activeCareGroupId] and removes a legacy extra field if present.
   Future<void> setActiveCareGroup({
     required String uid,
@@ -598,6 +665,7 @@ class UserRepository {
       roles: roles,
       themeColor: _parseThemeColorArgb(data),
       homepageSectionsPolicy: homepagePolicy,
+      photoUrl: _parseOptionalImageUrl(policyHost["photoUrl"]),
     );
   }
 
@@ -738,6 +806,7 @@ class UserRepository {
         roles: roles,
         themeColor: _parseThemeColorArgb(cgData),
         homepageSectionsPolicy: homepagePolicy,
+        photoUrl: _parseOptionalImageUrl(policyHost["photoUrl"]),
       );
 
       final prior = byResolvedData[resolvedDataGroupId];
@@ -854,5 +923,11 @@ class UserRepository {
     if (t is int) return t;
     if (t is num) return t.toInt();
     return null;
+  }
+
+  static String? _parseOptionalImageUrl(dynamic v) {
+    if (v is! String) return null;
+    final t = v.trim();
+    return t.isEmpty ? null : t;
   }
 }

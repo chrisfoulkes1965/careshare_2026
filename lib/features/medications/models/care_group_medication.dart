@@ -30,6 +30,7 @@ final class CareGroupMedication {
     this.scheduleMonthDays = const [],
     this.quantityOnHand,
     this.lowStockThreshold,
+    this.lastStockDate,
   });
 
   final String id;
@@ -57,6 +58,9 @@ final class CareGroupMedication {
 
   /// Alert when [quantityOnHand] is at or below this (requires both set).
   final int? lowStockThreshold;
+
+  /// Last time on-hand stock was updated (stock take, dose deduction, or manual edit).
+  final DateTime? lastStockDate;
 
   static CareGroupMedication fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> d) {
     return fromMap(d.id, d.data());
@@ -95,8 +99,13 @@ final class CareGroupMedication {
     int? lowStock;
     if (lst is int) {
       lowStock = lst.clamp(0, 0x6fffffff);
-    } else if (lst is num) {
+    } else     if (lst is num) {
       lowStock = lst.toInt().clamp(0, 0x6fffffff);
+    }
+    final lsd = data["lastStockDate"];
+    DateTime? lastStock;
+    if (lsd is Timestamp) {
+      lastStock = lsd.toDate();
     }
     final cr = data["careRecipientId"];
     String? careRecipientId;
@@ -119,6 +128,7 @@ final class CareGroupMedication {
       scheduleMonthDays: mds,
       quantityOnHand: qoh,
       lowStockThreshold: lowStock,
+      lastStockDate: lastStock,
     );
   }
 
@@ -272,7 +282,14 @@ final class CareGroupMedication {
       return "";
     }
     final source = quantityOnHand == null ? "assumed 28d default" : "on hand: ${quantityOnHand!} doses";
-    return "≈ ${d.toStringAsFixed(1)} d supply — $source";
+    var line = "≈ ${d.toStringAsFixed(1)} d supply — $source";
+    if (lastStockDate != null) {
+      final local = lastStockDate!.toLocal();
+      final ds =
+          "${local.year}-${local.month.toString().padLeft(2, "0")}-${local.day.toString().padLeft(2, "0")}";
+      line += " · stock date $ds";
+    }
+    return line;
   }
 
   /// Whether this schedule is valid to enable reminders (enforced in UI; slot cap for OS limits).

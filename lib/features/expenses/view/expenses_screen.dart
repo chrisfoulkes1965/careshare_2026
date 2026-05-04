@@ -30,10 +30,7 @@ bool _canViewExpenses(CareGroupMember? me) {
   if (me == null) {
     return false;
   }
-  return me.roles.contains("principal_carer") ||
-      me.roles.contains("financial_manager") ||
-      me.roles.contains("power_of_attorney") ||
-      me.roles.contains("care_group_administrator");
+  return me.roles.contains("financial_manager");
 }
 
 bool _canEditExpenses(CareGroupMember? me) {
@@ -223,8 +220,8 @@ class _ExpensesGate extends StatelessWidget {
           child: Padding(
             padding: EdgeInsets.all(24),
             child: Text(
-              "Expense history is visible to principal carers, financial managers, and those with power of attorney. "
-              "Ask a principal carer if you need access.",
+              "Expense history is visible to financial managers only. "
+              "Ask someone with that role if you need the list or reimbursement updates.",
               textAlign: TextAlign.center,
             ),
           ),

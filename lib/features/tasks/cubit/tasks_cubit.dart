@@ -43,6 +43,8 @@ final class TasksCubit extends Cubit<TasksState> {
     String? assignedTo,
     String notes = '',
     DateTime? dueAt,
+    String size = CareGroupTask.tierMedium,
+    String urgency = CareGroupTask.tierMedium,
     List<PlatformFile> attachments = const [],
   }) {
     return _repository.addTask(
@@ -51,6 +53,8 @@ final class TasksCubit extends Cubit<TasksState> {
       assignedTo: assignedTo,
       notes: notes,
       dueAt: dueAt,
+      size: size,
+      urgency: urgency,
       attachments: attachments,
     );
   }
@@ -61,6 +65,8 @@ final class TasksCubit extends Cubit<TasksState> {
     String notes = '',
     DateTime? dueAt,
     String? assignedTo,
+    String size = CareGroupTask.tierMedium,
+    String urgency = CareGroupTask.tierMedium,
     List<PlatformFile> newAttachments = const [],
   }) {
     return _repository.updateTask(
@@ -70,6 +76,8 @@ final class TasksCubit extends Cubit<TasksState> {
       notes: notes,
       dueAt: dueAt,
       assignedTo: assignedTo,
+      size: size,
+      urgency: urgency,
       newAttachments: newAttachments,
     );
   }

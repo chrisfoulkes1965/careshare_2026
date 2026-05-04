@@ -1,4 +1,5 @@
 import "dart:async";
+import "dart:typed_data";
 
 import "package:flutter_bloc/flutter_bloc.dart";
 
@@ -133,6 +134,52 @@ final class ProfileCubit extends Cubit<ProfileState> {
         careGroupId: careGroupId,
         argb: argb,
       );
+      await _load(snapshot);
+    } catch (e) {
+      if (previous is ProfileReady) {
+        emit(previous);
+      } else {
+        emit(ProfileError(e.toString()));
+      }
+      rethrow;
+    }
+  }
+
+  /// Sets `careGroups/{dataCareGroupDocId}.photoUrl` from an uploaded image (administrator only).
+  Future<void> uploadCareGroupAvatarPhoto({
+    required String dataCareGroupDocId,
+    required String storageCareGroupDocId,
+    required Uint8List bytes,
+    String? mimeType,
+  }) async {
+    final snapshot = _authSnapshotOrNull();
+    if (snapshot == null) return;
+    final previous = state;
+    try {
+      await _userRepository.uploadAndSetCareGroupAvatarPhoto(
+        dataCareGroupDocId: dataCareGroupDocId,
+        storageCareGroupDocId: storageCareGroupDocId,
+        bytes: bytes,
+        mimeType: mimeType,
+      );
+      await _load(snapshot);
+    } catch (e) {
+      if (previous is ProfileReady) {
+        emit(previous);
+      } else {
+        emit(ProfileError(e.toString()));
+      }
+      rethrow;
+    }
+  }
+
+  /// Clears the care group avatar URL (administrator only).
+  Future<void> clearCareGroupAvatarPhoto(String dataCareGroupDocId) async {
+    final snapshot = _authSnapshotOrNull();
+    if (snapshot == null) return;
+    final previous = state;
+    try {
+      await _userRepository.clearCareGroupAvatarPhoto(dataCareGroupDocId);
       await _load(snapshot);
     } catch (e) {
       if (previous is ProfileReady) {

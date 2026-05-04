@@ -7,12 +7,16 @@ final class MedicationDoseLogEntry {
     required this.loggedBy,
     this.takenAt,
     this.slotKey,
+    this.scheduledDeduction = false,
   });
 
   final String id;
   final String loggedBy;
   final DateTime? takenAt;
   final String? slotKey;
+
+  /// True when stock was reduced because the scheduled dose was due (not a user confirmation).
+  final bool scheduledDeduction;
 
   static MedicationDoseLogEntry fromDoc(QueryDocumentSnapshot<Map<String, dynamic>> d) {
     final m = d.data();
@@ -27,6 +31,7 @@ final class MedicationDoseLogEntry {
       loggedBy: (m["loggedBy"] as String?)?.trim() ?? "",
       takenAt: taken,
       slotKey: sk is String ? sk.trim() : null,
+      scheduledDeduction: m["scheduledDeduction"] == true,
     );
   }
 }

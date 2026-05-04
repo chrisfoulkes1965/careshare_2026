@@ -58,9 +58,15 @@ class SetupRepository {
     });
   }
 
-  Future<void> completeWizard({
+  /// Creates a new care group (documents and membership, chat channel, optional invites)
+  /// and applies [userUpdatesForNewGroup] to `users/{uid}` (caller supplies `activeCareGroupId`).
+  ///
+  /// Used by first-time setup ([completeWizard]) and by [createAdditionalCareGroup].
+  Future<void> _commitNewCareGroup({
     required String uid,
     required SetupSubmit submit,
+    required Map<String, dynamic> Function(String newCareGroupId)
+        userUpdatesForNewGroup,
   }) async {
     if (!_firebaseReady) {
       throw StateError("Firebase is not configured.");
@@ -135,19 +141,46 @@ class SetupRepository {
       });
     }
 
-    final userUpdate = <String, dynamic>{
-      "wizardCompleted": true,
-      "wizardSkipped": false,
-      "activeCareGroupId": gId,
-      firestoreUserLegacyActiveCareGroupField(): FieldValue.delete(),
-      "wizardDraft": FieldValue.delete(),
-    };
-    if (submit.avatarIndex != null) {
-      userUpdate["avatarIndex"] = submit.avatarIndex;
-    }
-
-    followUp.update(userRef, userUpdate);
+    followUp.update(userRef, userUpdatesForNewGroup(gId));
     await followUp.commit();
+  }
+
+  Future<void> completeWizard({
+    required String uid,
+    required SetupSubmit submit,
+  }) async {
+    await _commitNewCareGroup(
+      uid: uid,
+      submit: submit,
+      userUpdatesForNewGroup: (gId) {
+        final userUpdate = <String, dynamic>{
+          "wizardCompleted": true,
+          "wizardSkipped": false,
+          "activeCareGroupId": gId,
+          firestoreUserLegacyActiveCareGroupField(): FieldValue.delete(),
+          "wizardDraft": FieldValue.delete(),
+        };
+        if (submit.avatarIndex != null) {
+          userUpdate["avatarIndex"] = submit.avatarIndex;
+        }
+        return userUpdate;
+      },
+    );
+  }
+
+  /// Creates another care group for a user who already uses the app (same Firestore shape as setup).
+  Future<void> createAdditionalCareGroup({
+    required String uid,
+    required SetupSubmit submit,
+  }) async {
+    await _commitNewCareGroup(
+      uid: uid,
+      submit: submit,
+      userUpdatesForNewGroup: (gId) => {
+        "activeCareGroupId": gId,
+        firestoreUserLegacyActiveCareGroupField(): FieldValue.delete(),
+      },
+    );
   }
 
   List<String> _normaliseEmails(List<String> raw) {

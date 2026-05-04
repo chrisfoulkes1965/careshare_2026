@@ -70,6 +70,9 @@ final class MedicationsCubit extends Cubit<MedicationsState> {
         );
       } catch (_) {}
     }
+    try {
+      await _repository.applyScheduledDoseInventoryForOverdueAcks(careGroupId);
+    } catch (_) {}
   }
 
   void subscribe() {

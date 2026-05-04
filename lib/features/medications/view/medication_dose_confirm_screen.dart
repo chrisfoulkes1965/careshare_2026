@@ -101,8 +101,8 @@ class _MedicationDoseConfirmScreenState extends State<MedicationDoseConfirmScree
         children: [
           const Text(
             "Your care group expects a confirmation for this scheduled dose. "
-            "Tap below only if the medicines were actually taken. "
-            "On-hand counts decrease by one per item (using entered stock, or the 28-day estimate). "
+            "On-hand stock has already been reduced when the dose was due (using entered stock, or the 28-day estimate). "
+            "Tap below only if the medicines were actually taken — this records your confirmation only. "
             "If you skip confirming, principal carers can be notified after a grace period.",
             style: TextStyle(fontSize: 14),
           ),

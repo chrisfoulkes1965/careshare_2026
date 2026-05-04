@@ -50,6 +50,15 @@ class UserSettingsCareGroupsScreen extends StatelessWidget {
                     ),
               ),
               const SizedBox(height: 12),
+              FilledButton(
+                onPressed: () {
+                  if (context.mounted) {
+                    context.push("/user-settings/create-care-group");
+                  }
+                },
+                child: const Text("Create new care group"),
+              ),
+              const SizedBox(height: 12),
               FilledButton.tonal(
                 onPressed: () {
                   if (context.mounted) {
@@ -60,8 +69,11 @@ class UserSettingsCareGroupsScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               if (options.isEmpty)
-                const Text(
-                  "No care groups were found. Complete setup or accept an invite.",
+                Text(
+                  "No care groups were found. Use Create new care group above, complete setup, or accept an invite.",
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                 )
               else
                 ...options.map(

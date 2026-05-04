@@ -1,17 +1,41 @@
+import "package:file_picker/file_picker.dart";
+import "package:flutter/foundation.dart" show kIsWeb;
 import "package:flutter/material.dart";
 import "package:flutter/services.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
+import "package:image_picker/image_picker.dart";
 
 import "../../../core/theme/app_colors.dart";
 import "../../care_group/models/care_group_option.dart";
 import "../../profile/cubit/profile_cubit.dart";
 import "../../profile/cubit/profile_state.dart";
+import "widgets/care_group_avatar.dart";
 import "widgets/care_group_calendar_setup_section.dart";
 import "widgets/care_group_members_invites_section.dart";
 import "widgets/care_group_theme_picker_sheet.dart";
 import "../../settings/view/widgets/calendar_subscription_tile.dart";
 import "../models/home_sections_visibility.dart";
+
+String? _mimeTypeForPickedImageName(String? name) {
+  if (name == null) {
+    return null;
+  }
+  final lower = name.toLowerCase();
+  if (lower.endsWith(".png")) {
+    return "image/png";
+  }
+  if (lower.endsWith(".gif")) {
+    return "image/gif";
+  }
+  if (lower.endsWith(".webp")) {
+    return "image/webp";
+  }
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+  return null;
+}
 
 /// Settings for the user’s [ProfileReady.profile.activeCareGroupId]: name, theme, setup wizard, members.
 void _careGroupSettingsPopOrHome(BuildContext context) {
@@ -51,10 +75,22 @@ class CareGroupSettingsScreen extends StatelessWidget {
         }
         return Scaffold(
           appBar: AppBar(
-            title: Text(
-              opt.displayName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            title: Row(
+              children: [
+                CareGroupAvatar(
+                  radius: 18,
+                  photoUrl: opt.photoUrl,
+                  fallbackName: opt.displayName,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    opt.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
@@ -179,6 +215,7 @@ class _CareGroupSettingsForm extends StatefulWidget {
 class _CareGroupSettingsFormState extends State<_CareGroupSettingsForm> {
   late final TextEditingController _name;
   bool _saving = false;
+  bool _avatarBusy = false;
 
   @override
   void initState() {
@@ -200,6 +237,136 @@ class _CareGroupSettingsFormState extends State<_CareGroupSettingsForm> {
     super.dispose();
   }
 
+  Future<void> _pickCareGroupPhoto(ImageSource source) async {
+    if (_avatarBusy) {
+      return;
+    }
+    final o = widget.option;
+    if (!o.canEditCareGroupNameThemeAndCalendar) {
+      return;
+    }
+
+    // `image_picker` gallery is unreliable on Flutter web (often throws). Use
+    // `file_picker` with in-memory bytes, same pattern as medication photo pick.
+    Uint8List? bytes;
+    String? mimeType;
+    if (kIsWeb) {
+      if (source == ImageSource.gallery) {
+        final r = await FilePicker.platform.pickFiles(
+          type: FileType.image,
+          withData: true,
+        );
+        if (r == null || r.files.isEmpty || !mounted) {
+          return;
+        }
+        final f = r.files.first;
+        if (f.bytes == null || f.bytes!.isEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Could not read the image file."),
+              ),
+            );
+          }
+          return;
+        }
+        bytes = f.bytes;
+        mimeType = _mimeTypeForPickedImageName(f.name);
+      } else {
+        final picker = ImagePicker();
+        final XFile? file = await picker.pickImage(
+          source: ImageSource.camera,
+          maxWidth: 2048,
+          maxHeight: 2048,
+          imageQuality: 88,
+        );
+        if (file == null || !mounted) {
+          return;
+        }
+        bytes = await file.readAsBytes();
+        mimeType = file.mimeType;
+      }
+    } else {
+      final picker = ImagePicker();
+      final XFile? file = await picker.pickImage(
+        source: source,
+        maxWidth: 2048,
+        maxHeight: 2048,
+        imageQuality: 88,
+      );
+      if (file == null || !mounted) {
+        return;
+      }
+      bytes = await file.readAsBytes();
+      mimeType = file.mimeType;
+    }
+
+    if (bytes == null || bytes.isEmpty) {
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    final cubit = context.read<ProfileCubit>();
+    final ms = ScaffoldMessenger.of(context);
+    setState(() => _avatarBusy = true);
+    try {
+      await cubit.uploadCareGroupAvatarPhoto(
+        dataCareGroupDocId: o.dataCareGroupId,
+        storageCareGroupDocId: o.careGroupId,
+        bytes: bytes,
+        mimeType: mimeType,
+      );
+      if (mounted) {
+        ms.showSnackBar(
+          const SnackBar(content: Text("Care group photo updated.")),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ms.showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _avatarBusy = false);
+      }
+    }
+  }
+
+  Future<void> _removeCareGroupPhoto() async {
+    if (_avatarBusy) {
+      return;
+    }
+    final o = widget.option;
+    if (!o.canEditCareGroupNameThemeAndCalendar) {
+      return;
+    }
+    if (o.photoUrl == null || o.photoUrl!.trim().isEmpty) {
+      return;
+    }
+    final cubit = context.read<ProfileCubit>();
+    final ms = ScaffoldMessenger.of(context);
+    setState(() => _avatarBusy = true);
+    try {
+      await cubit.clearCareGroupAvatarPhoto(
+        o.dataCareGroupId,
+      );
+      if (mounted) {
+        ms.showSnackBar(
+          const SnackBar(content: Text("Care group photo removed.")),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ms.showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _avatarBusy = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final o = widget.option;
@@ -217,6 +384,80 @@ class _CareGroupSettingsFormState extends State<_CareGroupSettingsForm> {
                 ),
           ),
           const SizedBox(height: 16),
+          Text(
+            "Care group photo",
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            "Shown on home for everyone in this care group. "
+            "Take a new picture or choose one from your library.",
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              CareGroupAvatar(
+                radius: 36,
+                photoUrl: o.photoUrl,
+                fallbackName: o.displayName,
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: !canEditAppearance || _avatarBusy
+                          ? null
+                          : () => _pickCareGroupPhoto(ImageSource.camera),
+                      icon: const Icon(Icons.photo_camera_outlined),
+                      label: const Text("Take photo"),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: !canEditAppearance || _avatarBusy
+                          ? null
+                          : () => _pickCareGroupPhoto(ImageSource.gallery),
+                      icon: const Icon(Icons.photo_library_outlined),
+                      label: const Text("Upload photo"),
+                    ),
+                    if (o.photoUrl != null &&
+                        o.photoUrl!.trim().isNotEmpty &&
+                        canEditAppearance)
+                      TextButton(
+                        onPressed: _avatarBusy ? null : _removeCareGroupPhoto,
+                        child: const Text("Remove photo"),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (_avatarBusy) ...[
+            const SizedBox(height: 8),
+            const Center(
+              child: SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          ],
+          if (!canEditAppearance) ...[
+            const SizedBox(height: 8),
+            const Text(
+              "Ask a care group administrator to change the care group photo.",
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.grey500,
+              ),
+            ),
+          ],
+          const SizedBox(height: 24),
           TextField(
             controller: _name,
             readOnly: !canEditAppearance,

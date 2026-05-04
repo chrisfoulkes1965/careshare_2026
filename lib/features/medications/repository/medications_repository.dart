@@ -202,7 +202,7 @@ class MedicationsRepository {
         .map((s) => s.docs.map(MedicationDoseLogEntry.fromDoc).toList());
   }
 
-  /// Carers may only patch [quantityOnHand] on the medication document (see Firestore rules).
+  /// Carers may only patch [quantityOnHand] (and [lastStockDate]) on the medication document (see Firestore rules).
   Future<void> patchMedicationQuantityOnly({
     required String careGroupId,
     required String medicationId,
@@ -213,7 +213,10 @@ class MedicationsRepository {
     }
     final q = quantityOnHand.clamp(0, 0x3fffffff);
     return _withOpTimeout(
-      _medications(careGroupId).doc(medicationId).update({"quantityOnHand": q}),
+      _medications(careGroupId).doc(medicationId).update({
+        "quantityOnHand": q,
+        "lastStockDate": FieldValue.serverTimestamp(),
+      }),
     );
   }
 
@@ -394,6 +397,7 @@ class MedicationsRepository {
     };
     if (quantityOnHand != null) {
       data["quantityOnHand"] = quantityOnHand.clamp(0, 0x3fffffff);
+      data["lastStockDate"] = FieldValue.serverTimestamp();
     }
     if (lowStockThreshold != null) {
       data["lowStockThreshold"] = lowStockThreshold.clamp(0, 0x3fffffff);
@@ -524,8 +528,10 @@ class MedicationsRepository {
     }
     if (clearQuantity) {
       patch["quantityOnHand"] = FieldValue.delete();
+      patch["lastStockDate"] = FieldValue.serverTimestamp();
     } else if (quantityOnHand != null) {
       patch["quantityOnHand"] = quantityOnHand.clamp(0, 0x3fffffff);
+      patch["lastStockDate"] = FieldValue.serverTimestamp();
     }
     if (clearLowStock) {
       patch["lowStockThreshold"] = FieldValue.delete();
@@ -595,16 +601,160 @@ class MedicationsRepository {
         final v = entries[id];
         final ref = _medications(careGroupId).doc(id);
         if (v == null) {
-          batch.update(ref, {"quantityOnHand": FieldValue.delete()});
+          batch.update(ref, {
+            "quantityOnHand": FieldValue.delete(),
+            "lastStockDate": FieldValue.serverTimestamp(),
+          });
         } else {
-          batch.update(ref, {"quantityOnHand": v.clamp(0, 0x3fffffff)});
+          batch.update(ref, {
+            "quantityOnHand": v.clamp(0, 0x3fffffff),
+            "lastStockDate": FieldValue.serverTimestamp(),
+          });
         }
       }
       await batch.commit();
     }
   }
 
-  /// One dose from each listed medication: writes a [doseLogs] entry and decrements stock by 1.
+  /// When a scheduled dose is due, reduces on-hand counts once per reminder ack (even if nobody confirms).
+  Future<void> applyScheduledDoseInventoryForOverdueAcks(String careGroupId) {
+    if (!_firebaseReady) {
+      return Future.value();
+    }
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      return Future.value();
+    }
+    final now = DateTime.now();
+    return _withOpTimeout(_applyScheduledDoseInventoryForOverdueAcksWork(
+      careGroupId: careGroupId,
+      uid: uid,
+      now: now,
+    ));
+  }
+
+  Future<void> _applyScheduledDoseInventoryForOverdueAcksWork({
+    required String careGroupId,
+    required String uid,
+    required DateTime now,
+  }) async {
+    final snap = await _medicationReminderAcks(careGroupId)
+        .where("needsConfirmation", isEqualTo: true)
+        .orderBy("dueAt", descending: true)
+        .limit(48)
+        .get();
+    for (final doc in snap.docs) {
+      final ack = MedicationReminderAck.fromDoc(doc);
+      if (ack.dueAt == null || ack.dueAt!.isAfter(now)) {
+        continue;
+      }
+      if (ack.inventoryAdjustedAt != null) {
+        continue;
+      }
+      try {
+        await FirebaseFirestore.instance.runTransaction((t) async {
+          final ackRef = doc.reference;
+          final ackSnap = await t.get(ackRef);
+          if (!ackSnap.exists || ackSnap.data() == null) {
+            return;
+          }
+          final data = ackSnap.data()!;
+          if (data["needsConfirmation"] != true) {
+            return;
+          }
+          if (data["inventoryAdjustedAt"] != null) {
+            return;
+          }
+          final dueRaw = data["dueAt"];
+          DateTime? dueAt;
+          if (dueRaw is Timestamp) {
+            dueAt = dueRaw.toDate();
+          }
+          if (dueAt == null || dueAt.isAfter(now)) {
+            return;
+          }
+          final slotKey = (data["slotKey"] as String?)?.trim() ?? "";
+          final ids = _medicationIdsFromAckMap(data);
+          for (final id in ids) {
+            await _decrementMedicationStockForDose(
+              t,
+              careGroupId: careGroupId,
+              medicationId: id,
+              uid: uid,
+              trimmedSlot: slotKey,
+              scheduledDeduction: true,
+            );
+          }
+          t.update(ackRef, {
+            "inventoryAdjustedAt": FieldValue.serverTimestamp(),
+            "inventoryAdjustedBy": uid,
+            "updatedAt": FieldValue.serverTimestamp(),
+          });
+        });
+      } catch (_) {}
+    }
+  }
+
+  List<String> _medicationIdsFromAckMap(Map<String, dynamic> data) {
+    final rawIds = data["medicationIds"];
+    final ids = <String>[];
+    if (rawIds is List) {
+      for (final e in rawIds) {
+        final s = e?.toString().trim();
+        if (s != null && s.isNotEmpty) {
+          ids.add(s);
+        }
+      }
+    }
+    ids.sort();
+    return ids;
+  }
+
+  Future<void> _decrementMedicationStockForDose(
+    Transaction t, {
+    required String careGroupId,
+    required String medicationId,
+    required String uid,
+    required String trimmedSlot,
+    required bool scheduledDeduction,
+  }) async {
+    if (medicationId.isEmpty) {
+      return;
+    }
+    final r = _medications(careGroupId).doc(medicationId);
+    final s = await t.get(r);
+    if (!s.exists || s.data() == null) {
+      return;
+    }
+    final m = CareGroupMedication.fromMap(medicationId, s.data()!);
+    if (!m.reminderEnabled || m.reminderTimes.isEmpty) {
+      return;
+    }
+    if (!m.hasValidReminderSchedule) {
+      return;
+    }
+    final start = m.effectiveDosesInHand;
+    final next = (start - 1).clamp(0, 0x3fffffff);
+    final logRef = r.collection("doseLogs").doc();
+    final logData = <String, dynamic>{
+      "takenAt": FieldValue.serverTimestamp(),
+      "loggedBy": uid,
+    };
+    if (trimmedSlot.isNotEmpty) {
+      logData["slotKey"] = trimmedSlot.length > 120 ? trimmedSlot.substring(0, 120) : trimmedSlot;
+    }
+    if (scheduledDeduction) {
+      logData["scheduledDeduction"] = true;
+    }
+    t.set(logRef, logData);
+    t.update(r, {
+      "quantityOnHand": next,
+      "lastStockDate": FieldValue.serverTimestamp(),
+    });
+  }
+
+  /// One dose from each listed medication: writes a [doseLogs] entry and decrements stock by 1,
+  /// unless stock was already reduced when the dose became due ([inventoryAdjustedAt] on the ack).
   Future<void> applyDoseDecrements({
     required String careGroupId,
     required Set<String> medicationIds,
@@ -628,39 +778,36 @@ class MedicationsRepository {
         : null;
     return _withOpTimeout(
       FirebaseFirestore.instance.runTransaction((t) async {
+        if (ackDocId != null) {
+          final ackRef = _medicationReminderAcks(careGroupId).doc(ackDocId);
+          final ackSnap = await t.get(ackRef);
+          if (ackSnap.exists && ackSnap.data() != null && ackSnap.data()!["inventoryAdjustedAt"] != null) {
+            t.update(ackRef, {
+              "needsConfirmation": false,
+              "acknowledgedAt": FieldValue.serverTimestamp(),
+              "acknowledgedBy": uid,
+              "updatedAt": FieldValue.serverTimestamp(),
+            });
+            return;
+          }
+        }
         for (final id in medicationIds) {
           if (id.isEmpty) {
             continue;
           }
-          final r = _medications(careGroupId).doc(id);
-          final s = await t.get(r);
-          if (!s.exists) {
-            continue;
-          }
-          final m = CareGroupMedication.fromMap(id, s.data()!);
-          if (!m.reminderEnabled || m.reminderTimes.isEmpty) {
-            continue;
-          }
-          if (!m.hasValidReminderSchedule) {
-            continue;
-          }
-          final start = m.effectiveDosesInHand;
-          final next = (start - 1).clamp(0, 0x3fffffff);
-          final logRef = r.collection("doseLogs").doc();
-          final logData = <String, dynamic>{
-            "takenAt": FieldValue.serverTimestamp(),
-            "loggedBy": uid,
-          };
-          if (trimmedSlot.isNotEmpty) {
-            logData["slotKey"] = trimmedSlot.length > 120 ? trimmedSlot.substring(0, 120) : trimmedSlot;
-          }
-          t.set(logRef, logData);
-          t.update(r, {"quantityOnHand": next});
+          await _decrementMedicationStockForDose(
+            t,
+            careGroupId: careGroupId,
+            medicationId: id,
+            uid: uid,
+            trimmedSlot: trimmedSlot,
+            scheduledDeduction: false,
+          );
         }
         if (ackDocId != null) {
           final ackRef = _medicationReminderAcks(careGroupId).doc(ackDocId);
-          final ackSnap = await t.get(ackRef);
-          if (ackSnap.exists) {
+          final ackSnap2 = await t.get(ackRef);
+          if (ackSnap2.exists) {
             t.update(ackRef, {
               "needsConfirmation": false,
               "acknowledgedAt": FieldValue.serverTimestamp(),

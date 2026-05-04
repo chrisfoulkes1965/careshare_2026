@@ -49,6 +49,8 @@ class _TaskEditorSheetState extends State<TaskEditorSheet> {
   final _notes = TextEditingController();
   String? _assigneeUid;
   DateTime? _dueAt;
+  String _size = CareGroupTask.tierMedium;
+  String _urgency = CareGroupTask.tierMedium;
   final List<PlatformFile> _pending = [];
   bool _saving = false;
   String? _error;
@@ -66,6 +68,8 @@ class _TaskEditorSheetState extends State<TaskEditorSheet> {
       _notes.text = t.notes;
       _assigneeUid = t.assignedTo;
       _dueAt = t.dueAt;
+      _size = t.size;
+      _urgency = t.urgency;
     }
     _loadMembers();
   }
@@ -209,6 +213,8 @@ class _TaskEditorSheetState extends State<TaskEditorSheet> {
               notes: _notes.text,
               dueAt: _dueAt,
               assignedTo: _assigneeUid,
+              size: _size,
+              urgency: _urgency,
               newAttachments: _pending,
             )
           : cubit.addTask(
@@ -216,6 +222,8 @@ class _TaskEditorSheetState extends State<TaskEditorSheet> {
               notes: _notes.text,
               dueAt: _dueAt,
               assignedTo: _assigneeUid,
+              size: _size,
+              urgency: _urgency,
               attachments: _pending,
             );
       await work.timeout(
@@ -308,6 +316,26 @@ class _TaskEditorSheetState extends State<TaskEditorSheet> {
             maxLines: 6,
             textInputAction: TextInputAction.newline,
           ),
+          const SizedBox(height: 16),
+          _tierIconRow(
+            context: context,
+            label: "Size",
+            value: _size,
+            onChanged: (v) => setState(() => _size = v),
+            lowIcon: Icons.looks_one,
+            mediumIcon: Icons.looks_two,
+            highIcon: Icons.looks_3,
+          ),
+          const SizedBox(height: 16),
+          _tierIconRow(
+            context: context,
+            label: "Urgency",
+            value: _urgency,
+            onChanged: (v) => setState(() => _urgency = v),
+            lowIcon: Icons.low_priority,
+            mediumIcon: Icons.remove,
+            highIcon: Icons.priority_high,
+          ),
           const SizedBox(height: 8),
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -395,8 +423,101 @@ class _TaskEditorSheetState extends State<TaskEditorSheet> {
     return "${d.year}-${d.month.toString().padLeft(2, "0")}-${d.day.toString().padLeft(2, "0")} ${d.hour.toString().padLeft(2, "0")}:${d.minute.toString().padLeft(2, "0")}";
   }
 
+  Widget _tierIconRow({
+    required BuildContext context,
+    required String label,
+    required String value,
+    required ValueChanged<String> onChanged,
+    required IconData lowIcon,
+    required IconData mediumIcon,
+    required IconData highIcon,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    final tiers = <(String, IconData, String)>[
+      (CareGroupTask.tierLow, lowIcon, "Low"),
+      (CareGroupTask.tierMedium, mediumIcon, "Medium"),
+      (CareGroupTask.tierHigh, highIcon, "High"),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: Theme.of(context).textTheme.titleSmall),
+        const SizedBox(height: 8),
+        DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border.all(color: scheme.outlineVariant),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            children: [
+              for (var i = 0; i < tiers.length; i++) ...[
+                if (i > 0)
+                  SizedBox(
+                    height: 52,
+                    child: VerticalDivider(width: 1, color: scheme.outlineVariant),
+                  ),
+                Expanded(
+                  child: _TierSegment(
+                    icon: tiers[i].$2,
+                    caption: tiers[i].$3,
+                    selected: value == tiers[i].$1,
+                    onTap: () => onChanged(tiers[i].$1),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Future<void> _openUrl(String url) async {
     final u = Uri.parse(url);
     await launchUrl(u, mode: LaunchMode.platformDefault);
+  }
+}
+
+class _TierSegment extends StatelessWidget {
+  const _TierSegment({
+    required this.icon,
+    required this.caption,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String caption;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final fg = selected ? scheme.primary : scheme.onSurfaceVariant;
+    return Material(
+      color: selected ? scheme.primaryContainer.withValues(alpha: 0.35) : Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 26, color: fg),
+              const SizedBox(height: 4),
+              Text(
+                caption,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+                  color: fg,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

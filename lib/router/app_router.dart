@@ -34,6 +34,7 @@ import "../features/user/view/user_settings_alerts_screen.dart";
 import "../features/user/view/user_settings_homepage_screen.dart";
 import "../features/user/view/user_settings_security_screen.dart";
 import "../features/user/view/verify_alternate_email_screen.dart";
+import "../features/user/view/create_care_group_screen.dart";
 import "../features/profile/cubit/profile_cubit.dart";
 import "../features/profile/cubit/profile_state.dart";
 import "../features/setup_wizard/view/setup_wizard_view.dart";
@@ -66,6 +67,7 @@ abstract final class AppRouteNames {
   static const medicationDose = "medicationDose";
   static const userSettingsProfile = "userSettingsProfile";
   static const userSettingsCareGroups = "userSettingsCareGroups";
+  static const userSettingsCreateCareGroup = "userSettingsCreateCareGroup";
   static const userSettingsHomepage = "userSettingsHomepage";
   static const userSettingsAlerts = "userSettingsAlerts";
   static const userSettingsSecurity = "userSettingsSecurity";
@@ -365,6 +367,11 @@ abstract final class AppRouter {
           path: "/user-settings/care-groups",
           name: AppRouteNames.userSettingsCareGroups,
           builder: (context, state) => const UserSettingsCareGroupsScreen(),
+        ),
+        GoRoute(
+          path: "/user-settings/create-care-group",
+          name: AppRouteNames.userSettingsCreateCareGroup,
+          builder: (context, state) => const CreateCareGroupScreen(),
         ),
         GoRoute(
           path: "/user-settings/homepage",

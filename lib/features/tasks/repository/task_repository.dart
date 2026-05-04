@@ -137,6 +137,8 @@ class TaskRepository {
     String? assignedTo,
     String notes = '',
     DateTime? dueAt,
+    String size = CareGroupTask.tierMedium,
+    String urgency = CareGroupTask.tierMedium,
     List<PlatformFile> attachments = const [],
   }) async {
     if (!_firebaseReady) {
@@ -164,6 +166,8 @@ class TaskRepository {
       "status": "open",
       "createdBy": uid,
       "createdAt": FieldValue.serverTimestamp(),
+      "size": size,
+      "urgency": urgency,
     };
     if (notes.trim().isNotEmpty) {
       data["notes"] = notes.trim();
@@ -205,6 +209,8 @@ class TaskRepository {
     required String notes,
     DateTime? dueAt,
     String? assignedTo,
+    String size = CareGroupTask.tierMedium,
+    String urgency = CareGroupTask.tierMedium,
     List<PlatformFile> newAttachments = const [],
   }) async {
     if (!_firebaseReady) return;
@@ -221,7 +227,11 @@ class TaskRepository {
       }
     }
 
-    final patch = <String, dynamic>{"title": trimmed};
+    final patch = <String, dynamic>{
+      "title": trimmed,
+      "size": size,
+      "urgency": urgency,
+    };
     if (notes.trim().isEmpty) {
       patch["notes"] = FieldValue.delete();
     } else {
@@ -261,11 +271,25 @@ class TaskRepository {
     required bool done,
   }) async {
     if (!_firebaseReady) return;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (done && uid == null) {
+      throw StateError("Not signed in.");
+    }
+    final patch = <String, dynamic>{
+      "status": done ? "done" : "open",
+    };
+    if (done) {
+      if (uid != null) {
+        patch["completedBy"] = uid;
+        patch["completedAt"] = FieldValue.serverTimestamp();
+      }
+    } else {
+      patch["completedBy"] = FieldValue.delete();
+      patch["completedAt"] = FieldValue.delete();
+    }
     await _tasks(careGroupId)
         .doc(taskId)
-        .update({
-          "status": done ? "done" : "open",
-        })
+        .update(patch)
         .timeout(
           _writeTimeout,
           onTimeout: () => throw TimeoutException(

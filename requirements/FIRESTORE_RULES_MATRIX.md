@@ -140,12 +140,12 @@ Brief: medication **configuration** vs **mark taken** — splitting subdocuments
 
 | Op | principal | carer | financial | poa | recipient |
 |----|-----------|-------|-------------|-----|-------------|
-| read | Y | **C** (brief: expense visibility not explicit; default **N** for plain carer unless “view history” is all members) | Y | **C** | N |
+| read | N | N | Y | N | N |
 | create | Y | N | Y | N | N |
 | update | Y | N | **C**: payer or financial_manager | N | N |
 | delete | Y | N | **C** | N | N |
 
-**Clarify with product:** are expenses visible to all carers or only **financial_manager** + **principal**?
+**Product decision:** expense **history / list reads** are **financial_manager** only (not principal, carer, or POA). Principal/financial can still **create** / **update** / **delete** per rows above — ensure the client does not assume principals can load expense lists.
 
 ### `careGroups/{hid}/meetings/{meetingId}`
 
@@ -223,11 +223,10 @@ Do not store high-precision location readable by all carers unless the brief exp
 
 ## Open questions for product (resolve before locking rules)
 
-1. Can **carers** see **all** expenses or only **financial_manager** + **principal**?
-2. For **limited recipient** users: exactly which collections are readable (chat, documents, meetings, full task list vs assigned-only)?
-3. Is **Simple Mode** stored on **`users`** only, **`members`** only, or both (rules should read one)?
-4. **Soft-deleted tasks**: new `status == 'archived'` vs delete — who can transition?
-5. **Kudos score**: client-writable at all, or **Fn-only**?
+1. For **limited recipient** users: exactly which collections are readable (chat, documents, meetings, full task list vs assigned-only)?
+2. Is **Simple Mode** stored on **`users`** only, **`members`** only, or both (rules should read one)?
+3. **Soft-deleted tasks**: new `status == 'archived'` vs delete — who can transition?
+4. **Kudos score**: client-writable at all, or **Fn-only**?
 
 ---
 

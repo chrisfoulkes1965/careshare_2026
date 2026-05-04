@@ -27,6 +27,35 @@ service firebase.storage {
         );
     }
 
+    // Matches Firestore [careTeamId] + [isCareGroupAdministratorForGroup]: resolve the
+    // `members/{uid}` document used for roles (shell vs linked data doc), then require
+    // [care_group_administrator]. Storage paths may use either doc id; both must evaluate
+    // the same team + admin check.
+    function memberExistsStorage(careGroupDocId) {
+      return firestore.exists(
+        /databases/(default)/documents/careGroups/$(careGroupDocId)/members/$(request.auth.uid)
+      );
+    }
+
+    function careTeamIdStorage(careGroupDocId) {
+      return memberExistsStorage(careGroupDocId)
+        ? careGroupDocId
+        : (
+            firestore.exists(/databases/(default)/documents/careGroups/$(careGroupDocId))
+            && 'careGroupId' in careGroupData(careGroupDocId).data
+            && careGroupData(careGroupDocId).data.careGroupId is string
+            ? careGroupData(careGroupDocId).data.careGroupId
+            : careGroupDocId
+          );
+    }
+
+    function isCareGroupAdministratorFromStorage(careGroupDocId) {
+      let team = careTeamIdStorage(careGroupDocId);
+      return request.auth != null
+        && firestore.exists(/databases/(default)/documents/careGroups/$(team)/members/$(request.auth.uid))
+        && 'care_group_administrator' in firestore.get(/databases/(default)/documents/careGroups/$(team)/members/$(request.auth.uid)).data.get('roles', []);
+    }
+
     match /careGroups/{careGroupId}/task_attachments/{taskId}/{fileName} {
       allow read: if isMemberOfCareGroupFromStorage(careGroupId);
       allow create, update: if isMemberOfCareGroupFromStorage(careGroupId)
@@ -64,6 +93,15 @@ service firebase.storage {
         && request.resource.size < 8 * 1024 * 1024
         && request.resource.contentType.matches("image/.*");
       allow delete: if isMemberOfCareGroupFromStorage(careGroupId);
+    }
+
+    // Care group avatar — careGroups/{careGroupId}/group_avatar/{fileName}
+    match /careGroups/{careGroupId}/group_avatar/{fileName} {
+      allow read: if isMemberOfCareGroupFromStorage(careGroupId);
+      allow create, update: if isCareGroupAdministratorFromStorage(careGroupId)
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches("image/.*");
+      allow delete: if isCareGroupAdministratorFromStorage(careGroupId);
     }
 
     // Profile photos: users/{uid}/profile_photo/{fileName}
