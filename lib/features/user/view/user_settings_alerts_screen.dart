@@ -117,7 +117,8 @@ class _UserSettingsAlertsScreenState extends State<UserSettingsAlertsScreen> {
               ),
               const SizedBox(height: 4),
               Text(
-                "Scheduled dose reminders on this device, and optional push mirrors if your backend sends them.",
+                "Scheduled dose and pill box refill reminders on this device, plus optional push "
+                "when your backend sends them.",
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
@@ -126,7 +127,7 @@ class _UserSettingsAlertsScreenState extends State<UserSettingsAlertsScreen> {
               _channelTile(
                 context,
                 title: "In-app",
-                subtitle: "Banners and navigation to confirm doses while using the app",
+                subtitle: "Banners, pill box refills, and navigation to confirm doses",
                 value: _draft!.medicationDue.inApp,
                 onChanged: _saving
                     ? null

@@ -109,6 +109,7 @@ class _MedicationBatchPrepContentState extends State<_MedicationBatchPrepContent
           const SizedBox(height: 8),
           Text(
             "Check off each medication as you prepare it for the week (week of ${widget.weekKey}). "
+            "Completing a pill box refill also updates this checklist. "
             "Progress is saved for your care team.",
             style: const TextStyle(fontSize: 13),
           ),

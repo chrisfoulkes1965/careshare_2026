@@ -8,6 +8,7 @@ import "package:timezone/timezone.dart" as tz;
 
 import "medication_dose_group_planner.dart";
 import "../../features/medications/models/care_group_medication.dart";
+import "../../features/pill_box/logic/pill_box_refill_reminders.dart";
 
 /// Grouped local reminders; tap opens a confirmation flow (set [setDosePayloadHandler] from [app.dart]).
 /// Foreground FCM for chat also uses the same plugin (set [setChatPayloadHandler]).
@@ -16,13 +17,17 @@ final class MedicationNotificationService {
   static final MedicationNotificationService instance = MedicationNotificationService._();
 
   final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
+  final Set<int> _doseNotificationIds = {};
+  final Set<int> _pillBoxNotificationIds = {};
   bool _ready = false;
   String? _lastCareGroupId;
   List<CareGroupMedication> _lastMeds = const [];
   int? _lastQuietStartMin;
   int? _lastQuietEndMin;
   void Function(String payload)? _dosePayloadHandler;
+  void Function(String payload)? _pillBoxPayloadHandler;
   final List<String> _deferredDosePayloads = [];
+  final List<String> _deferredPillBoxPayloads = [];
   void Function(String payload)? _chatPayloadHandler;
   final List<String> _deferredChatPayloads = [];
 
@@ -30,6 +35,14 @@ final class MedicationNotificationService {
   static const String _channelName = "Medication reminders";
   static const String _chatChannelId = "careshare_chat";
   static const String _chatChannelName = "Group chat";
+
+  void setPillBoxPayloadHandler(void Function(String payload)? handler) {
+    _pillBoxPayloadHandler = handler;
+    for (final p in _deferredPillBoxPayloads) {
+      handler?.call(p);
+    }
+    _deferredPillBoxPayloads.clear();
+  }
 
   void setDosePayloadHandler(void Function(String payload)? handler) {
     _dosePayloadHandler = handler;
@@ -64,6 +77,14 @@ final class MedicationNotificationService {
         _dosePayloadHandler!(p);
       } else {
         _deferredDosePayloads.add(p);
+      }
+      return;
+    }
+    if (p.startsWith("pillbox|")) {
+      if (_pillBoxPayloadHandler != null) {
+        _pillBoxPayloadHandler!(p);
+      } else {
+        _deferredPillBoxPayloads.add(p);
       }
       return;
     }
@@ -191,14 +212,12 @@ final class MedicationNotificationService {
     _lastQuietEndMin = quietHoursEndMinute;
 
     try {
-      await _plugin.cancelAll().timeout(
-        const Duration(seconds: 20),
-        onTimeout: () {
-          debugPrint("cancelAll: timed out, continuing sync");
-        },
-      );
+      for (final id in _doseNotificationIds) {
+        await _plugin.cancel(id: id);
+      }
+      _doseNotificationIds.clear();
     } catch (e) {
-      debugPrint("cancel before sync: $e");
+      debugPrint("cancel dose notifications before sync: $e");
     }
 
     if (defaultTargetPlatform == TargetPlatform.linux) {
@@ -247,11 +266,76 @@ final class MedicationNotificationService {
           payload: n.payload,
           matchDateTimeComponents: n.dateTimeMatch,
         );
+        _doseNotificationIds.add(n.notificationId);
       } catch (e, st) {
         debugPrint("zonedSchedule dose: $e\n$st");
       }
     }
     return nudges;
+  }
+
+  /// Schedules local reminders for upcoming pill box refills (separate ID range from dose nudges).
+  Future<void> syncPillBoxRefillReminders(List<PillBoxRefillReminderPlan> plans) async {
+    if (kIsWeb || !_ready) {
+      return;
+    }
+    if (defaultTargetPlatform == TargetPlatform.linux) {
+      return;
+    }
+    try {
+      for (final id in _pillBoxNotificationIds) {
+        await _plugin.cancel(id: id);
+      }
+      _pillBoxNotificationIds.clear();
+    } catch (e) {
+      debugPrint("cancel pill box notifications: $e");
+    }
+
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        _channelId,
+        _channelName,
+        channelDescription: "Reminders to refill pill boxes.",
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+      iOS: DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      ),
+      macOS: DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      ),
+      windows: WindowsNotificationDetails(),
+    );
+
+    final now = tz.TZDateTime.now(tz.local);
+    for (final plan in plans) {
+      if (plan.scheduledAt.isBefore(DateTime.now().subtract(const Duration(hours: 12)))) {
+        continue;
+      }
+      final scheduled = tz.TZDateTime.from(plan.scheduledAt, tz.local);
+      if (scheduled.isBefore(now)) {
+        continue;
+      }
+      try {
+        await _plugin.zonedSchedule(
+          id: plan.notificationId,
+          scheduledDate: scheduled,
+          notificationDetails: details,
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          title: "Pill box refill",
+          body: plan.body,
+          payload: plan.payload,
+        );
+        _pillBoxNotificationIds.add(plan.notificationId);
+      } catch (e, st) {
+        debugPrint("zonedSchedule pillbox: $e\n$st");
+      }
+    }
   }
 
   /// Foreground FCM: system notification is not shown; we mirror it here.

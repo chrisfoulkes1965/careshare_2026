@@ -27,6 +27,8 @@ import "../../calendar/repository/linked_calendar_events_repository.dart";
 import "../../expenses/models/care_group_expense.dart";
 import "../../expenses/repository/expenses_repository.dart";
 import "../../medications/models/care_group_medication.dart";
+import "../../pill_box/view/home_pill_box_refill_banner.dart";
+import "../../pill_box/repository/pill_box_repository.dart";
 import "../../medications/repository/medication_care_group_settings_repository.dart";
 import "../../medications/repository/medications_repository.dart";
 import "home_medication_confirm_banner.dart";
@@ -1047,16 +1049,28 @@ List<Widget> _homeOrderedLandingSectionWidgets({
         break;
       case HomeSectionId.medications:
         out.add(
-          _homeScheduleStripSection(
-            context: context,
-            title: "Medications",
-            emptyHint: "No medicine reminders scheduled ahead.",
-            seeAllLabel: "Medicines →",
-            onSeeAll: () => context.push("/medications"),
-            items: lanes.medicationItems,
-            nameByUid: nameByUid,
-            membersByUid: membersByUid,
-            loadError: medicationsErr,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _homeScheduleStripSection(
+                context: context,
+                title: "Medications",
+                emptyHint: "No medicine reminders scheduled ahead.",
+                seeAllLabel: "Medicines →",
+                onSeeAll: () => context.push("/medications"),
+                items: lanes.medicationItems,
+                nameByUid: nameByUid,
+                membersByUid: membersByUid,
+                loadError: medicationsErr,
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => context.push("/pill-box"),
+                  child: const Text("Pill boxes →"),
+                ),
+              ),
+            ],
           ),
         );
         break;
@@ -1398,6 +1412,17 @@ class HomeLandingView extends StatelessWidget {
                 const SizedBox(height: 4),
                 if (dataId != null &&
                     dataId.isNotEmpty &&
+                    profile.resolvedAlertPreferences.medicationDue.inApp) ...[
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 0),
+                    child: HomePillBoxRefillBanner(
+                      careGroupDataId: dataId,
+                      pillBoxRepository: context.read<PillBoxRepository>(),
+                    ),
+                  ),
+                ],
+                if (dataId != null &&
+                    dataId.isNotEmpty &&
                     profile
                         .resolvedAlertPreferences.medicationReorder.inApp) ...[
                   Padding(
@@ -1512,6 +1537,12 @@ void _openAddMenu(BuildContext context) {
               title: const Text("Medication"),
               subtitle: const Text("Prescriptions and reminders"),
               onTap: () => go("/medications"),
+            ),
+            ListTile(
+              leading: const Icon(Icons.medication_liquid_outlined),
+              title: const Text("Pill box refill"),
+              subtitle: const Text("Guided weekly compartment fill"),
+              onTap: () => go("/pill-box"),
             ),
           ],
         ),
@@ -1802,6 +1833,7 @@ const _kCareTeamTools = <(IconData, String, String)>[
   (Icons.task_alt_outlined, "Tasks", "/tasks"),
   (Icons.calendar_month_outlined, "Calendar", "/calendar"),
   (Icons.medication_outlined, "Meds", "/medications"),
+  (Icons.medication_liquid_outlined, "Pill boxes", "/pill-box"),
   (Icons.route_outlined, "Pathways", "/pathways"),
   (Icons.mail_outline, "Invites", "/invitations"),
   (Icons.note_alt_outlined, "Notes", "/notes"),

@@ -23,6 +23,7 @@ import "../features/invitations/view/invitations_screen.dart";
 import "../features/journal/view/journal_screen.dart";
 import "../features/medications/view/medication_dose_confirm_screen.dart";
 import "../features/medications/view/medications_screen.dart";
+import "../features/pill_box/view/pill_box_screen.dart";
 import "../features/meetings/view/meetings_screen.dart";
 import "../features/members/view/members_screen.dart";
 import "../features/notes/view/notes_screen.dart";
@@ -62,6 +63,7 @@ abstract final class AppRouteNames {
   static const meetings = "meetings";
   static const documentLibrary = "documentLibrary";
   static const medications = "medications";
+  static const pillBox = "pillBox";
   static const photoGallery = "photoGallery";
   static const selectCareGroup = "selectCareGroup";
   static const medicationDose = "medicationDose";
@@ -337,6 +339,18 @@ abstract final class AppRouter {
           path: "/medications",
           name: AppRouteNames.medications,
           builder: (context, state) => const MedicationsScreen(),
+        ),
+        GoRoute(
+          path: "/pill-box",
+          name: AppRouteNames.pillBox,
+          builder: (context, state) {
+            final rid = state.uri.queryParameters["careRecipientId"]?.trim();
+            final openRefill = state.uri.queryParameters["refill"] == "1";
+            return PillBoxScreen(
+              initialCareRecipientId: rid?.isNotEmpty == true ? rid : null,
+              openRefill: openRefill,
+            );
+          },
         ),
         GoRoute(
           path: "/photo-gallery",

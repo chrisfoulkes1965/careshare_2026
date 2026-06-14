@@ -2,6 +2,8 @@ import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 import "package:go_router/go_router.dart";
 
+import "../../pill_box/repository/pill_box_repository.dart";
+import "../../pill_box/view/medications_pill_box_refill_strip.dart";
 import "../cubit/medications_state.dart";
 import "../../members/models/care_group_member.dart";
 import "../../members/repository/members_repository.dart";
@@ -255,6 +257,11 @@ class _MedicationsViewState extends State<_MedicationsView> {
         actions: [
           if (careGroupId != null && careGroupId.isNotEmpty && state is MedicationsDisplay) ...[
             IconButton(
+              icon: const Icon(Icons.medication_liquid_outlined),
+              tooltip: "Pill boxes",
+              onPressed: () => context.push("/pill-box"),
+            ),
+            IconButton(
               icon: const Icon(Icons.checklist_outlined),
               tooltip: "Weekly batch prep",
               onPressed: () => MedicationBatchPrepSheet.show(
@@ -343,11 +350,34 @@ class _Body extends StatelessWidget {
             ),
           ],
         ),
-      MedicationsDisplay(:final list) => _medicationsGroupedListView(
-          context,
-          list,
-          canConfigureMedications,
-          careRecipients,
+      MedicationsDisplay(:final list) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Builder(
+              builder: (context) {
+                final cg = context.read<ProfileCubit>().state;
+                if (cg is! ProfileReady) {
+                  return const SizedBox.shrink();
+                }
+                final dataId = cg.activeCareGroupDataId;
+                if (dataId == null || dataId.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+                return MedicationsPillBoxRefillStrip(
+                  careGroupId: dataId,
+                  pillBoxRepository: context.read<PillBoxRepository>(),
+                );
+              },
+            ),
+            Expanded(
+              child: _medicationsGroupedListView(
+                context,
+                list,
+                canConfigureMedications,
+                careRecipients,
+              ),
+            ),
+          ],
         ),
     };
   }

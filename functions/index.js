@@ -561,3 +561,6 @@ exports.scheduledMedicationReminders = medSched.scheduledMedicationReminders;
 const medMissed = require("./medicationMissedPrincipals");
 exports.scheduledMedicationMissedPrincipalAlerts =
   medMissed.scheduledMedicationMissedPrincipalAlerts;
+
+const pillBoxRefill = require("./pillBoxRefillReminderScheduler");
+exports.scheduledPillBoxRefillReminders = pillBoxRefill.scheduledPillBoxRefillReminders;

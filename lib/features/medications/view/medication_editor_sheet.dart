@@ -6,6 +6,7 @@ import "package:flutter/material.dart";
 import "package:flutter_bloc/flutter_bloc.dart";
 
 import "../../members/models/care_group_member.dart";
+import "../../pill_box/view/medication_editor_pill_box_hint.dart";
 import "../cubit/medications_cubit.dart";
 import "../models/care_group_medication.dart";
 import "../models/medication_dose_log.dart";
@@ -396,6 +397,14 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
 
   void _removeTime(int i) {
     setState(() => _times.removeAt(i));
+  }
+
+  void _applyPillBoxTimes(List<({int hour, int minute})> slots) {
+    setState(() {
+      _times
+        ..clear()
+        ..addAll(slots.map((s) => TimeOfDay(hour: s.hour, minute: s.minute)));
+    });
   }
 
   Future<void> _pickImage() async {
@@ -884,6 +893,13 @@ class _MedicationEditorSheetState extends State<MedicationEditorSheet> {
                     onDeleted: _saving ? null : () => _removeTime(i),
                   ),
               ],
+            ),
+            MedicationEditorPillBoxHint(
+              careRecipientId: _selectedCareRecipientId,
+              reminderTimes: _times,
+              remindersEnabled: _reminderEnabled,
+              readOnly: ro,
+              onApplyBoxTimes: ro || _saving ? null : _applyPillBoxTimes,
             ),
           ],
           if (ro && m != null && m.reminderEnabled) ...[

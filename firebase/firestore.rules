@@ -784,6 +784,57 @@ service cloud.firestore {
         allow delete: if isPrincipalOrPoaForCareGroup(careGroupId);
       }
 
+      match /pillBoxConfigs/{careRecipientId} {
+        allow read: if isCareGroupMember(careGroupId) && canReadMedicationList(careGroupId);
+
+        allow create: if isCareGroupMember(careGroupId)
+          && isPrincipalOrPoaForCareGroup(careGroupId)
+          && request.resource.data.keys().hasAll(['careRecipientId', 'dayCount', 'timePattern', 'timeSlots', 'updatedBy'])
+          && request.resource.data.updatedBy == request.auth.uid
+          && request.resource.data.careRecipientId == careRecipientId
+          && request.resource.data.careRecipientId is string
+          && request.resource.data.careRecipientId.size() >= 1
+          && request.resource.data.careRecipientId.size() <= 128
+          && request.resource.data.dayCount is int
+          && request.resource.data.dayCount >= 1
+          && request.resource.data.dayCount <= 31
+          && request.resource.data.timePattern is string
+          && request.resource.data.timePattern in ['daily', 'morning_evening', 'morning_midday_evening', 'custom']
+          && request.resource.data.timeSlots is list
+          && (!request.resource.data.keys().hasAny(['managedByCarerIds'])
+            || request.resource.data.managedByCarerIds is list)
+          && (!request.resource.data.keys().hasAny(['firstFillDate'])
+            || (request.resource.data.firstFillDate is string && request.resource.data.firstFillDate.size() <= 16))
+          && (!request.resource.data.keys().hasAny(['lastRefillDate'])
+            || (request.resource.data.lastRefillDate is string && request.resource.data.lastRefillDate.size() <= 16))
+          && (!request.resource.data.keys().hasAny(['refillReminderEnabled'])
+            || request.resource.data.refillReminderEnabled is bool)
+          && (!request.resource.data.keys().hasAny(['reminderDaysBefore'])
+            || (request.resource.data.reminderDaysBefore is int
+              && request.resource.data.reminderDaysBefore >= 0
+              && request.resource.data.reminderDaysBefore <= 14))
+          && request.resource.data.keys().hasOnly([
+            'careRecipientId', 'dayCount', 'timePattern', 'timeSlots', 'managedByCarerIds',
+            'firstFillDate', 'lastRefillDate', 'refillReminderEnabled', 'reminderDaysBefore',
+            'updatedBy', 'updatedAt'
+          ]);
+
+        allow update: if isCareGroupMember(careGroupId) && (
+          (isPrincipalOrPoaForCareGroup(careGroupId)
+            && request.resource.data.updatedBy == request.auth.uid
+            && diffKeys().hasOnly([
+              'careRecipientId', 'dayCount', 'timePattern', 'timeSlots', 'managedByCarerIds',
+              'firstFillDate', 'lastRefillDate', 'refillReminderEnabled', 'reminderDaysBefore',
+              'updatedBy', 'updatedAt'
+            ]))
+          || (isCarerOrPrincipalForCareGroup(careGroupId)
+            && request.resource.data.updatedBy == request.auth.uid
+            && diffKeys().hasOnly(['lastRefillDate', 'firstFillDate', 'updatedBy', 'updatedAt']))
+        );
+
+        allow delete: if isPrincipalOrPoaForCareGroup(careGroupId);
+      }
+
       match /expenses/{expenseId} {
         function expenseOptionalStringsOk() {
           return (!request.resource.data.keys().hasAny(['category'])

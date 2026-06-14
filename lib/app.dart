@@ -20,6 +20,9 @@ import "features/medications/repository/medication_care_group_settings_repositor
 import "features/medications/repository/medications_repository.dart";
 import "features/medications/logic/medication_dose_payload.dart";
 import "features/medications/view/medication_dose_route_args.dart";
+import "features/pill_box/logic/pill_box_routes.dart";
+import "features/pill_box/repository/pill_box_repository.dart";
+import "features/pill_box/view/pill_box_reminder_sync.dart";
 import "features/meetings/repository/meetings_repository.dart";
 import "features/calendar/repository/linked_calendar_events_repository.dart";
 import "features/members/repository/members_repository.dart";
@@ -45,6 +48,7 @@ class _CareShareAppState extends State<CareShareApp>
   GoRouter? _router;
   SessionRefresh? _sessionRefresh;
   bool _doseNavRegistered = false;
+  bool _pillBoxNavRegistered = false;
   bool _pushBound = false;
 
   @override
@@ -71,10 +75,27 @@ class _CareShareAppState extends State<CareShareApp>
             profileCubit: profileCubit,
           );
         }
+        if (_router != null && !_pillBoxNavRegistered) {
+          _pillBoxNavRegistered = true;
+          MedicationNotificationService.instance.setPillBoxPayloadHandler((payload) {
+            final parts = payload.split("|");
+            if (parts.length >= 3 && parts[0] == "pillbox") {
+              final rid = parts[2].trim();
+              final openRefill = parts.length >= 4 && parts[3] == "refill";
+              _router!.push(
+                pillBoxRoute(
+                  careRecipientId: rid.isNotEmpty ? rid : null,
+                  openRefill: openRefill,
+                ),
+              );
+              return;
+            }
+            _router!.push(pillBoxRoute());
+          });
+        }
         if (_router != null && !_doseNavRegistered) {
           _doseNavRegistered = true;
-          MedicationNotificationService.instance
-              .setDosePayloadHandler((payload) {
+          MedicationNotificationService.instance.setDosePayloadHandler((payload) {
             if (payload.startsWith("missed|")) {
               _router!.push("/medications");
               return;
@@ -148,13 +169,23 @@ class _CareShareAppState extends State<CareShareApp>
             if (state is! ProfileReady) {
               return routed;
             }
-            return Theme(
+            final dataId = state.activeCareGroupDataId;
+            final memberDocId = state.activeCareGroupMemberDocId;
+            Widget content = Theme(
               data: buildCareGroupAppTheme(
                 Theme.of(context),
                 activeThemeArgb: state.activeCareGroupThemeArgb,
               ),
               child: routed,
             );
+            if (dataId != null && dataId.isNotEmpty) {
+              content = PillBoxReminderSync(
+                careGroupDataId: dataId,
+                membersCareGroupId: memberDocId ?? dataId,
+                child: content,
+              );
+            }
+            return content;
           },
         );
       },
@@ -222,7 +253,13 @@ class CareShareRoot extends StatelessWidget {
                                   child: RepositoryProvider(
                                     create: (_) => MedicationsRepository(
                                         firebaseReady: firebaseReady),
-                                    child: BlocProvider(
+                                    child: RepositoryProvider(
+                                      create: (context) => PillBoxRepository(
+                                        firebaseReady: firebaseReady,
+                                        medicationsRepository:
+                                            context.read<MedicationsRepository>(),
+                                      ),
+                                      child: BlocProvider(
                                       create: (context) => AuthBloc(
                                         repository:
                                             context.read<AuthRepository>(),
@@ -252,6 +289,7 @@ class CareShareRoot extends StatelessWidget {
             ),
           ),
         ),
+      ),
       ),
       ),
       ),

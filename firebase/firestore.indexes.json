@@ -16,6 +16,13 @@
         { "fieldPath": "principalAlertSent", "order": "ASCENDING" },
         { "fieldPath": "dueAt", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "pillBoxConfigs",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "refillReminderEnabled", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

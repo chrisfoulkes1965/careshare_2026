@@ -8,6 +8,7 @@ import "package:go_router/go_router.dart";
 import "package:shared_preferences/shared_preferences.dart";
 
 import "../medication_reminders/medication_notification_service.dart";
+import "../../features/pill_box/logic/pill_box_routes.dart";
 import "../../features/medications/view/medication_dose_route_args.dart";
 import "../../features/profile/cubit/profile_cubit.dart";
 import "../../features/profile/cubit/profile_state.dart";
@@ -76,6 +77,24 @@ final class CaresharePushService {
     }
     final slotKey = (data["slotKey"] ?? "").toString().trim();
     _openMedicationDose(cg, ids, slotKey: slotKey);
+  }
+
+  void _openPillBoxRefillFromData(Map<String, dynamic> data) {
+    if (data["type"]?.toString() != "pillBoxRefill") {
+      return;
+    }
+    final rid = (data["careRecipientId"] ?? "").toString().trim();
+    final openRefill = (data["refill"] ?? "").toString() == "1";
+    final r = _router;
+    if (r == null) {
+      return;
+    }
+    r.push(
+      pillBoxRoute(
+        careRecipientId: rid.isNotEmpty ? rid : null,
+        openRefill: openRefill,
+      ),
+    );
   }
 
   void _openMedicationMissedFromData(Map<String, dynamic> data) {
@@ -176,6 +195,8 @@ final class CaresharePushService {
         _openMedicationFromData(m.data);
       } else if (m.data["type"]?.toString() == "medicationMissed") {
         _openMedicationMissedFromData(m.data);
+      } else if (m.data["type"]?.toString() == "pillBoxRefill") {
+        _openPillBoxRefillFromData(m.data);
       }
     } catch (e) {
       debugPrint("getInitialMessage: $e");
@@ -230,6 +251,8 @@ final class CaresharePushService {
         _openMedicationFromData(m.data);
       } else if (m.data["type"]?.toString() == "medicationMissed") {
         _openMedicationMissedFromData(m.data);
+      } else if (m.data["type"]?.toString() == "pillBoxRefill") {
+        _openPillBoxRefillFromData(m.data);
       }
     });
 
@@ -287,6 +310,27 @@ final class CaresharePushService {
         final t = m.notification?.title?.trim() ?? "Medication";
         final b = m.notification?.body?.trim() ?? "A scheduled dose was not confirmed";
         final payload = cg.isEmpty ? "missed|" : "missed|$cg";
+        unawaited(
+          MedicationNotificationService.instance.showMedicationForegroundNotification(
+            title: t,
+            body: b,
+            payload: payload,
+          ),
+        );
+        return;
+      }
+      if (m.data["type"]?.toString() == "pillBoxRefill") {
+        final st = _profileCubit?.state;
+        if (st is ProfileReady && !st.profile.resolvedAlertPreferences.medicationDue.pushApp) {
+          return;
+        }
+        final rid = (m.data["careRecipientId"] ?? "").toString().trim();
+        final cg = (m.data["careGroupId"] ?? "").toString();
+        final t = m.notification?.title?.trim() ?? "Pill box refill";
+        final b = m.notification?.body?.trim() ?? "Time to refill a pill box";
+        final payload = cg.isEmpty || rid.isEmpty
+            ? "pillbox|||refill"
+            : "pillbox|$cg|$rid|refill";
         unawaited(
           MedicationNotificationService.instance.showMedicationForegroundNotification(
             title: t,

@@ -136,6 +136,17 @@ Legend: **Y** = allow, **N** = deny, **C** = conditional (see notes), **Fn** = p
 
 Brief: medication **configuration** vs **mark taken** — splitting subdocuments or using Cloud Functions avoids carers editing dose/schedule.
 
+### `careGroups/{hid}/pillBoxConfigs/{careRecipientId}`
+
+| Op | principal | carer | financial | poa | recipient |
+|----|-----------|-------|-------------|-----|-------------|
+| read | Y | Y | N | Y | **C**: own recipient’s box only if limited app |
+| create | Y | N | N | Y | N |
+| update | Y | **C**: carers may patch `lastRefillDate` / `firstFillDate` only (complete refill) | N | Y | N |
+| delete | Y | N | N | Y | N |
+
+**Cloud Function** `scheduledPillBoxRefillReminders` writes `lastRefillPushCycleKey` / `lastRefillPushAt` (Admin SDK). Nominated managers in `managedByCarerIds` receive FCM when the refill window opens.
+
 ### `careGroups/{hid}/expenses/{expenseId}`
 
 | Op | principal | carer | financial | poa | recipient |

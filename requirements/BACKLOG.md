@@ -94,6 +94,7 @@ Everything below is either **partial** (needs completion to match the spec) or *
 - **Reminders** (local + push) with **quiet hours**; FCM.
 - **Stock / inventory** and **low-stock** warnings (units, packs, thresholds).
 - **Batch preparation** (e.g. weekly) with a **checklist** to mark each med **processed** and optional audit trail.
+- **Pill box management** per caree: configurable day/time compartments, nominated medication managers, refill cycle + reminders (local + FCM to managers), guided refill wizard (med-by-med or time-by-time), stock verification on complete; batch-prep checklist auto-updated on refill *(client + `scheduledPillBoxRefillReminders` Cloud Function)*.
 - **Split “configuration” vs “taken / logged”** (matrix): carers logging “taken” should not rewrite dose/schedule — implement via **subdocuments**, **patch-only fields** in rules, or **Cloud Function**.
 
 ---
